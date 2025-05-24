@@ -606,42 +606,88 @@ API-Tester 支持生成多种格式的测试报告：
 创建一个 config.yaml 文件，包含 API 测试的所有配置：
 
 ```yaml
-api:
-  specFile: ./api/openapi.yaml
-  baseURL: http://localhost:8080
+# API 规范文件配置 - 可以使用单个文件或多个文件
+# 单个文件方式（向后兼容）
+spec: ./api/openapi.yaml
+# 或者使用多个文件方式
+specFiles:
+  - ./api/openapi/v1/service1.swagger.json
+  - ./api/openapi/v1/service2.swagger.json
+
+# API 基础 URL
+base_url: http://localhost:8080
+# 请求超时时间（秒）
+timeout: 30
+# 是否详细输出
+verbose: true
+
+# 请求配置
+request:
+  # 请求头
   headers:
     Authorization: Bearer {{.token}}
     Content-Type: application/json
+  # 路径参数（可选）
+  path_params:
+    tenant_id: test_tenant
+  # 查询参数（可选）
+  query_params:
+    debug: true
 
-output:
-  directory: ./test-reports
-  reportType: junit
-  verbose: true
+# 输出目录
+output_dir: ./test-reports
 
-testData:
-  dataSources:
-    - name: testdata
-      type: file
+# CI/CD 集成配置
+ci:
+  # 输出格式 (json, xml, junit)
+  output_format: junit
+  # 失败阈值
+  fail_threshold: 0.2
+  # 通知配置
+  notifications:
+    slack: https://hooks.slack.com/services/xxx
+    email: admin@example.com
+
+# 测试数据配置
+test_data:
+  # 初始化脚本
+  init_script: |
+    echo "初始化测试环境..."
+    echo "设置初始变量..."
+  # 清理脚本
+  cleanup_script: echo "清理测试环境..."
+  # 数据源
+  sources:
+    - type: file
       path: ./testdata/data.json
-  initScripts:
-    - name: setup
-      type: sql
-      content: |
-        INSERT INTO test_config (key, value) VALUES ('test_mode', 'true');
 
+# 全局变量定义
+variables:
+  userId: 1001
+  projectId: 2002
+
+# 测试场景
 scenarios:
-  - name: 基本功能测试
+  - name: 基础测试
+    description: 测试基本功能和关键端点
     steps:
-      - name: 登录
-        path: /auth/login
-        method: POST
-        body:
-          username: "admin"
-          password: "admin123"
-        extract:
-          token: $.token
+      - name: 获取用户信息
+        endpoint: /v1/users/{{.userId}}
+        method: GET
         assert:
           status: 200
+        extract:
+          userName: $.name
+
+      - name: 创建项目
+        endpoint: /v1/projects
+        method: POST
+        dependencies: [获取用户信息]
+        request_body:
+          name: "测试项目"
+          owner: "{{.userName}}"
+        assert:
+          status: 201
 
       # 更多测试步骤...
 ```
