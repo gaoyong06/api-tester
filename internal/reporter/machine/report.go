@@ -169,6 +169,9 @@ func GenerateReport(apiDef *parser.APIDefinition, results []*types.EndpointTestR
 
 // prepareMachineReport 准备机器可读的报告数据
 func prepareMachineReport(apiDef *parser.APIDefinition, results []*types.EndpointTestResult) *MachineReport {
+	// 输出调试信息
+	fmt.Printf("准备机器可读报告，测试结果数量: %d\n", len(results))
+
 	// 创建报告
 	report := &MachineReport{}
 

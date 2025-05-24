@@ -131,11 +131,33 @@ var runCmd = &cobra.Command{
 					log.Fatalf("无法解析API定义: %v", err)
 				}
 			} else if len(cfg.SpecFiles) > 0 {
-				// 如果指定了多个规范文件，使用第一个
-				// 注意：这里简化处理，实际上可能需要合并多个规范文件
-				apiDef, err = parser.ParseSwaggerFile(cfg.SpecFiles[0])
-				if err != nil {
-					log.Fatalf("无法解析API定义: %v", err)
+				// 如果指定了多个规范文件，合并所有文件的信息
+				// 创建一个空的 API 定义来存储合并的结果
+				apiDef = &parser.APIDefinition{
+					Title: "合并的 API 定义",
+					Version: "v1",
+					Endpoints: []*parser.Endpoint{},
+				}
+
+				// 遍历所有规范文件并合并端点
+				for i, specFile := range cfg.SpecFiles {
+					fmt.Printf("解析规范文件 [%d/%d]: %s\n", i+1, len(cfg.SpecFiles), specFile)
+					tempDef, err := parser.ParseSwaggerFile(specFile)
+					if err != nil {
+						log.Printf("警告: 无法解析规范文件 %s: %v", specFile, err)
+						continue
+					}
+
+					// 将当前文件的端点添加到合并的 API 定义中
+					apiDef.Endpoints = append(apiDef.Endpoints, tempDef.Endpoints...)
+					fmt.Printf("  找到 %d 个端点\n", len(tempDef.Endpoints))
+				}
+
+				fmt.Printf("总端点数量: %d\n\n", len(apiDef.Endpoints))
+
+				// 检查是否成功解析了任何端点
+				if len(apiDef.Endpoints) == 0 {
+					log.Fatalf("无法从任何规范文件中解析出端点")
 				}
 			} else {
 				log.Fatalf("未指定API规范文件")
@@ -149,6 +171,9 @@ var runCmd = &cobra.Command{
 
 			// 将测试结果转换为端点测试结果数组，用于报告生成
 			endpointResults := results.Results
+
+			// 输出测试结果信息，用于调试
+			fmt.Printf("测试结果数量: %d\n", len(endpointResults))
 
 			// 创建一个字符串切片来存储所有生成的报告路径
 			reportPaths := []string{}

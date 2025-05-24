@@ -153,5 +153,6 @@ func (r *Runner) Run() (*types.TestResult, error) {
 		Passed:     passed,
 		Failed:     failed,
 		ReportPath: reportPath,
+		Results:    r.results, // 添加测试结果详情
 	}, nil
 }
