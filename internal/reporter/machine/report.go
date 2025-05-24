@@ -128,12 +128,19 @@ func GenerateReport(apiDef *parser.APIDefinition, results []*types.EndpointTestR
 	// 根据格式生成报告数据
 	var data []byte
 	var err error
+	
+	// 确保报告数据完整
+	report = prepareMachineReport(apiDef, results)
+	
 	switch format {
 	case "xml":
 		data, err = xml.MarshalIndent(report, "", "  ")
 	case "html":
-		// 对于 HTML 格式，暂时使用 JSON 格式
+		// 对于 HTML 格式，使用与 JSON 相同的数据格式
+		// 但是使用不同的文件扩展名
 		data, err = json.MarshalIndent(report, "", "  ")
+		// 修改扩展名为 .html
+		extension = ".html"
 	default: // 默认使用 JSON
 		data, err = json.MarshalIndent(report, "", "  ")
 	}
