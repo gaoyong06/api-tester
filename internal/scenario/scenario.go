@@ -203,14 +203,37 @@ func (m *Manager) processVariables(step *yaml.Step) (map[string]string, map[stri
 	// 处理查询参数
 	queryParams := make(map[string]string)
 	// 处理请求体
-	requestBody := step.RequestBody
+	var requestBodyStr string
 
-	// 替换请求体中的变量
-	if requestBody != "" {
-		requestBody = m.replaceVariables(requestBody)
+	// 处理不同类型的 RequestBody
+	switch body := step.RequestBody.(type) {
+	case string:
+		// 如果是字符串，直接替换变量
+		if body != "" {
+			requestBodyStr = m.replaceVariables(body)
+		}
+	case map[string]interface{}, map[interface{}]interface{}:
+		// 如果是对象，先转成 JSON 字符串
+		jsonBytes, err := json.Marshal(body)
+		if err != nil {
+			fmt.Printf("警告: 无法将请求体转换为 JSON: %v\n", err)
+		} else {
+			requestBodyStr = m.replaceVariables(string(jsonBytes))
+		}
+	case nil:
+		// 如果为空，不需要处理
+		requestBodyStr = ""
+	default:
+		// 其他类型，尝试转成 JSON
+		jsonBytes, err := json.Marshal(body)
+		if err != nil {
+			fmt.Printf("警告: 无法将请求体类型 %T 转换为 JSON: %v\n", body, err)
+		} else {
+			requestBodyStr = m.replaceVariables(string(jsonBytes))
+		}
 	}
 
-	return pathParams, queryParams, requestBody
+	return pathParams, queryParams, requestBodyStr
 }
 
 // replaceVariables 替换字符串中的变量

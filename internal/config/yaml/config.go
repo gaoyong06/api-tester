@@ -88,10 +88,12 @@ type Step struct {
 	Endpoint string `yaml:"endpoint"`
 	// HTTP方法
 	Method string `yaml:"method"`
-	// 请求体
-	RequestBody string `yaml:"request_body"`
+	// 请求体 - 支持字符串或对象格式
+	RequestBody interface{} `yaml:"request_body"`
 	// 提取变量
 	Extract map[string]string `yaml:"extract"`
 	// 依赖步骤
 	Dependencies []string `yaml:"dependencies"`
+	// 断言
+	Assert map[string]interface{} `yaml:"assert"`
 }
