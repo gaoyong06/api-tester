@@ -603,7 +603,9 @@ API-Tester 支持生成多种格式的测试报告：
 
 ### 步骤 2：创建配置文件
 
-创建一个 config.yaml 文件，包含 API 测试的所有配置：
+创建一个 config.yaml 文件，包含 API 测试的所有配置。你可以选择使用单个配置文件或拆分为多个配置文件：
+
+#### 选项 1：单个配置文件
 
 ```yaml
 # API 规范文件配置 - 可以使用单个文件或多个文件
@@ -690,6 +692,79 @@ scenarios:
           status: 201
 
       # 更多测试步骤...
+```
+
+#### 选项 2：拆分配置文件
+
+对于大型项目，可以将配置拆分为多个文件，使用 `includes` 字段引入其他配置文件：
+
+**主配置文件 (config/base.yaml)**
+```yaml
+# 包含其他配置文件
+includes:
+  - ./config/scenarios/basic.yaml
+  - ./config/scenarios/tables.yaml
+  - ./config/scenarios/guests.yaml
+  - ./config/scenarios/relationships.yaml
+  - ./config/scenarios/seating.yaml
+
+# API 基础配置
+base_url: http://localhost:8000
+timeout: 30
+verbose: true
+
+# 请求配置
+request:
+  headers:
+    X-API-Key: test-api-key
+    Content-Type: application/json
+
+# 输出目录
+output_dir: ./reports
+```
+
+**场景配置文件 (config/scenarios/basic.yaml)**
+```yaml
+# 基础测试场景
+scenarios:
+  - name: 基础功能测试
+    description: 测试基本功能和关键端点
+    steps:
+      - name: 获取用户信息
+        endpoint: /v1/users/{{.userId}}
+        method: GET
+        assert:
+          status: 200
+```
+
+**场景配置文件 (config/scenarios/tables.yaml)**
+```yaml
+# 桌子管理测试场景
+scenarios:
+  - name: 桌子管理测试
+    description: 测试桌子的创建、查询、更新和删除
+    steps:
+      - name: 创建桌子
+        endpoint: /v1/tables
+        method: POST
+        request_body:
+          name: "主桌"
+          capacity: 10
+        assert:
+          status: 201
+```
+
+配置文件结构示例：
+```
+/config
+  ├── base.yaml          # 基础配置（URL、超时、请求头等）
+  ├── scenarios
+  │   ├── basic.yaml     # 基础测试场景
+  │   ├── tables.yaml    # 桌子管理测试场景
+  │   ├── guests.yaml    # 嘉宾管理测试场景
+  │   ├── relationships.yaml # 嘉宾关系测试场景
+  │   ├── seating.yaml   # 座位安排测试场景
+  │   └── cleanup.yaml   # 删除测试场景
 ```
 
 ### 步骤 3：初始化测试数据

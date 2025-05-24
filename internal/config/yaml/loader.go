@@ -34,6 +34,20 @@ func LoadConfig(filePath string) (*Config, error) {
 		return nil, fmt.Errorf("无法解析YAML配置: %v", err)
 	}
 
+	// 处理包含的配置文件
+	if len(config.Includes) > 0 {
+		// 获取主配置文件所在目录，用于解析相对路径
+		baseDir := filepath.Dir(absPath)
+		
+		// 加载并合并所有包含的配置文件
+		mergedConfig, err := loadAndMergeIncludes(config, baseDir)
+		if err != nil {
+			return nil, err
+		}
+		
+		config = mergedConfig
+	}
+
 	// 设置默认值
 	setDefaults(config)
 
@@ -121,9 +135,176 @@ func SaveConfig(config *Config, filePath string) error {
 	return nil
 }
 
+// loadAndMergeIncludes 加载并合并包含的配置文件
+func loadAndMergeIncludes(baseConfig *Config, baseDir string) (*Config, error) {
+	// 创建一个新的配置对象作为合并结果
+	result := &Config{}
+	
+	// 先复制基础配置
+	*result = *baseConfig
+	
+	// 清除 includes 字段，避免循环引用
+	includes := baseConfig.Includes
+	result.Includes = nil
+	
+	// 处理每个包含的文件
+	for _, includePath := range includes {
+		// 如果是相对路径，则基于主配置文件目录解析
+		if !filepath.IsAbs(includePath) {
+			includePath = filepath.Join(baseDir, includePath)
+		}
+		
+		// 检查文件是否存在
+		if _, err := os.Stat(includePath); os.IsNotExist(err) {
+			return nil, fmt.Errorf("包含的配置文件不存在: %s", includePath)
+		}
+		
+		// 读取文件内容
+		data, err := ioutil.ReadFile(includePath)
+		if err != nil {
+			return nil, fmt.Errorf("无法读取包含的配置文件: %v", err)
+		}
+		
+		// 解析YAML
+		includeConfig := &Config{}
+		if err := yaml.Unmarshal(data, includeConfig); err != nil {
+			return nil, fmt.Errorf("无法解析包含的YAML配置: %v", err)
+		}
+		
+		// 如果包含的文件中也有 includes，递归处理
+		if len(includeConfig.Includes) > 0 {
+			// 获取包含文件所在目录
+			includeDir := filepath.Dir(includePath)
+			
+			// 递归处理
+			mergedInclude, err := loadAndMergeIncludes(includeConfig, includeDir)
+			if err != nil {
+				return nil, err
+			}
+			
+			includeConfig = mergedInclude
+		}
+		
+		// 合并配置
+		result = mergeConfigs(result, includeConfig)
+	}
+	
+	return result, nil
+}
+
+// mergeConfigs 合并两个配置对象
+func mergeConfigs(base, override *Config) *Config {
+	// 创建一个新的配置对象作为合并结果
+	result := &Config{}
+	*result = *base
+	
+	// 如果覆盖配置中有值，则使用覆盖配置的值
+	if override.Spec != "" {
+		result.Spec = override.Spec
+	}
+	
+	// 合并 SpecFiles
+	if len(override.SpecFiles) > 0 {
+		// 如果基础配置中没有 SpecFiles，直接使用覆盖配置的
+		if len(result.SpecFiles) == 0 {
+			result.SpecFiles = override.SpecFiles
+		} else {
+			// 否则合并两个列表，避免重复
+			specFilesMap := make(map[string]bool)
+			for _, file := range result.SpecFiles {
+				specFilesMap[file] = true
+			}
+			
+			for _, file := range override.SpecFiles {
+				if !specFilesMap[file] {
+					result.SpecFiles = append(result.SpecFiles, file)
+				}
+			}
+		}
+	}
+	
+	// 合并其他基本字段
+	if override.BaseURL != "" {
+		result.BaseURL = override.BaseURL
+	}
+	
+	if override.OutputDir != "" {
+		result.OutputDir = override.OutputDir
+	}
+	
+	if override.Timeout != 0 {
+		result.Timeout = override.Timeout
+	}
+	
+	// 合并 Request 结构
+	// 合并 Headers
+	for k, v := range override.Request.Headers {
+		result.Request.Headers[k] = v
+	}
+	
+	// 合并 PathParams
+	for k, v := range override.Request.PathParams {
+		result.Request.PathParams[k] = v
+	}
+	
+	// 合并 QueryParams
+	for k, v := range override.Request.QueryParams {
+		result.Request.QueryParams[k] = v
+	}
+	
+	// 合并 RequestBodies
+	for k, v := range override.Request.RequestBodies {
+		result.Request.RequestBodies[k] = v
+	}
+	
+	// 合并 TestData
+	if override.TestData.InitScript != "" {
+		result.TestData.InitScript = override.TestData.InitScript
+	}
+	
+	if override.TestData.CleanupScript != "" {
+		result.TestData.CleanupScript = override.TestData.CleanupScript
+	}
+	
+	// 合并 TestData.Sources
+	result.TestData.Sources = append(result.TestData.Sources, override.TestData.Sources...)
+	
+	// 合并 Scenarios
+	result.Scenarios = append(result.Scenarios, override.Scenarios...)
+	
+	// 合并 CI 配置
+	if override.CI.OutputFormat != "" {
+		result.CI.OutputFormat = override.CI.OutputFormat
+	}
+	
+	if override.CI.FailThreshold != 0 {
+		result.CI.FailThreshold = override.CI.FailThreshold
+	}
+	
+	if override.CI.Notifications.Slack != "" {
+		result.CI.Notifications.Slack = override.CI.Notifications.Slack
+	}
+	
+	if override.CI.Notifications.Email != "" {
+		result.CI.Notifications.Email = override.CI.Notifications.Email
+	}
+	
+	// 合并 WebUI 配置
+	if override.WebUI.Enabled {
+		result.WebUI.Enabled = true
+	}
+	
+	if override.WebUI.Port != 0 {
+		result.WebUI.Port = override.WebUI.Port
+	}
+	
+	return result
+}
+
 // CreateDefaultConfig 创建默认配置
 func CreateDefaultConfig() *Config {
 	return &Config{
+		Includes:  []string{},
 		Spec:      "./api/swagger.json",
 		BaseURL:   "http://localhost:8080",
 		OutputDir: "./test-reports",

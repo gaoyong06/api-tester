@@ -2,6 +2,8 @@ package yaml
 
 // Config 表示API测试工具的统一配置
 type Config struct {
+	// 包含的其他配置文件路径
+	Includes []string `yaml:"includes"`
 	// API规范文件路径（单个文件，向后兼容）
 	Spec string `yaml:"spec"`
 	// API规范文件路径（多个文件）
