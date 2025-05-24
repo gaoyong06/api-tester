@@ -122,18 +122,18 @@ func GenerateReport(apiDef *parser.APIDefinition, results []*types.EndpointTestR
 	reportFileName := fmt.Sprintf("api-test-report-%s%s", time.Now().Format("20060102-150405"), extension)
 	reportPath := filepath.Join(outputDir, reportFileName)
 
-	// 创建报告文件
-	reportFile, err := os.Create(reportPath)
-	if err != nil {
-		return "", fmt.Errorf("无法创建报告文件: %v", err)
-	}
-	defer reportFile.Close()
+	// 输出详细日志
+	fmt.Printf("正在生成报告文件: %s，格式: %s\n", reportPath, format)
 
-	// 根据格式生成报告
+	// 根据格式生成报告数据
 	var data []byte
+	var err error
 	switch format {
 	case "xml":
 		data, err = xml.MarshalIndent(report, "", "  ")
+	case "html":
+		// 对于 HTML 格式，暂时使用 JSON 格式
+		data, err = json.MarshalIndent(report, "", "  ")
 	default: // 默认使用 JSON
 		data, err = json.MarshalIndent(report, "", "  ")
 	}
@@ -142,10 +142,20 @@ func GenerateReport(apiDef *parser.APIDefinition, results []*types.EndpointTestR
 		return "", fmt.Errorf("无法序列化报告数据: %v", err)
 	}
 
-	// 写入文件
+	// 直接写入文件，不使用 reportFile
+	fmt.Printf("正在将数据写入文件: %s\n", reportPath)
+
+	// 使用 ioutil.WriteFile 写入文件
 	if err := ioutil.WriteFile(reportPath, data, 0644); err != nil {
 		return "", fmt.Errorf("无法写入报告文件: %v", err)
 	}
+
+	// 检查文件是否存在
+	if _, err := os.Stat(reportPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("生成报告后文件不存在: %s", reportPath)
+	}
+
+	fmt.Printf("报告文件已成功生成: %s\n", reportPath)
 
 	return reportPath, nil
 }

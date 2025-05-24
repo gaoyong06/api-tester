@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
 	"github.com/gaoyong06/api-tester/internal/config"
 	"github.com/gaoyong06/api-tester/internal/config/yaml"
 	"github.com/gaoyong06/api-tester/internal/parser"
 	"github.com/gaoyong06/api-tester/internal/reporter/machine"
 	"github.com/gaoyong06/api-tester/internal/runner"
-	"github.com/gaoyong06/api-tester/internal/types"
 	"github.com/spf13/cobra"
 )
 
@@ -124,32 +122,65 @@ var runCmd = &cobra.Command{
 		// 如果需要生成机器可读报告
 		if reportType == "json" || reportType == "xml" || reportType == "junit" {
 			// 解析API定义
-			apiDef, err := parser.ParseSwaggerFile(cfg.SpecFile)
-			if err != nil {
-				log.Fatalf("无法解析API定义: %v", err)
+			var apiDef *parser.APIDefinition
+			
+			// 如果指定了单个规范文件，使用它
+			if cfg.SpecFile != "" {
+				apiDef, err = parser.ParseSwaggerFile(cfg.SpecFile)
+				if err != nil {
+					log.Fatalf("无法解析API定义: %v", err)
+				}
+			} else if len(cfg.SpecFiles) > 0 {
+				// 如果指定了多个规范文件，使用第一个
+				// 注意：这里简化处理，实际上可能需要合并多个规范文件
+				apiDef, err = parser.ParseSwaggerFile(cfg.SpecFiles[0])
+				if err != nil {
+					log.Fatalf("无法解析API定义: %v", err)
+				}
+			} else {
+				log.Fatalf("未指定API规范文件")
 			}
 
 			// 确保输出目录存在
-			outputDir := filepath.Join(cfg.OutputDir, "machine")
+			outputDir := cfg.OutputDir
 			if err := os.MkdirAll(outputDir, 0755); err != nil {
 				log.Fatalf("无法创建输出目录: %v", err)
 			}
 
-			// 创建结果数组，用于报告生成
-			// 注意：这里应该根据实际的 results 结构进行转换
-			// 简化处理，创建一个空的结果数组
-			endpointResults := make([]*types.EndpointTestResult, 0)
+			// 将测试结果转换为端点测试结果数组，用于报告生成
+			endpointResults := results.Results
 
+			// 创建一个字符串切片来存储所有生成的报告路径
+			reportPaths := []string{}
+			
+			// 始终生成 JSON 报告，方便机器处理
+			fmt.Println("正在生成 JSON 报告...")
+			jsonReportPath, err := machine.GenerateReport(apiDef, endpointResults, outputDir, "json")
+			if err != nil {
+				log.Printf("警告: 无法生成 JSON 报告: %v", err)
+			} else {
+				reportPaths = append(reportPaths, jsonReportPath)
+				fmt.Printf("JSON 报告已成功保存到: %s\n", jsonReportPath)
+				// 检查文件是否存在
+				if _, err := os.Stat(jsonReportPath); os.IsNotExist(err) {
+					log.Printf("警告: JSON 报告文件不存在: %s", jsonReportPath)
+				}
+			}
+
+			// 根据报告类型生成其他格式的报告
 			var reportPath string
-
-			// 根据报告类型生成不同格式的报告
+			
 			switch reportType {
 			case "json":
-				reportPath, err = machine.GenerateReport(apiDef, endpointResults, outputDir, "json")
+				// 已经生成了 JSON 报告，不需要重复生成
+				reportPath = jsonReportPath
 			case "xml":
 				reportPath, err = machine.GenerateReport(apiDef, endpointResults, outputDir, "xml")
 			case "junit":
 				reportPath, err = machine.GenerateJUnitReport(apiDef, endpointResults, outputDir)
+			default:
+				// 默认生成 HTML 报告
+				reportPath, err = machine.GenerateReport(apiDef, endpointResults, outputDir, "html")
 			}
 
 			if err != nil {
