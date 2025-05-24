@@ -33,20 +33,61 @@ func NewRunner(cfg *config.Config) *Runner {
 
 // Run 运行API测试
 func (r *Runner) Run() (*types.TestResult, error) {
-	// 解析OpenAPI规范
-	apiDef, err := parser.ParseOpenAPI(r.config.SpecFile)
-	if err != nil {
-		return nil, fmt.Errorf("解析OpenAPI规范失败: %v", err)
+	// 存储所有端点
+	allEndpoints := []*parser.Endpoint{}
+	
+	// 判断是否有多个规范文件
+	if len(r.config.SpecFiles) > 0 {
+		// 处理多个规范文件
+		fmt.Printf("检测到 %d 个 API 规范文件\n", len(r.config.SpecFiles))
+		
+		for i, specFile := range r.config.SpecFiles {
+			fmt.Printf("解析规范文件 [%d/%d]: %s\n", i+1, len(r.config.SpecFiles), specFile)
+			
+			// 尝试解析 OpenAPI 3.0 格式
+			apiDef, err := parser.ParseOpenAPI(specFile)
+			if err != nil {
+				// 如果失败，尝试解析 Swagger 2.0 格式
+				apiDef, err = parser.ParseSwaggerFile(specFile)
+				if err != nil {
+					return nil, fmt.Errorf("解析规范文件 %s 失败: %v", specFile, err)
+				}
+			}
+			
+			// 将端点添加到总列表中
+			allEndpoints = append(allEndpoints, apiDef.Endpoints...)
+			
+			fmt.Printf("  找到 %d 个端点\n", len(apiDef.Endpoints))
+		}
+	} else if r.config.SpecFile != "" {
+		// 处理单个规范文件（向后兼容）
+		fmt.Printf("解析规范文件: %s\n", r.config.SpecFile)
+		
+		// 尝试解析 OpenAPI 3.0 格式
+		apiDef, err := parser.ParseOpenAPI(r.config.SpecFile)
+		if err != nil {
+			// 如果失败，尝试解析 Swagger 2.0 格式
+			apiDef, err = parser.ParseSwaggerFile(r.config.SpecFile)
+			if err != nil {
+				return nil, fmt.Errorf("解析规范文件失败: %v", err)
+			}
+		}
+		
+		// 将端点添加到总列表中
+		allEndpoints = append(allEndpoints, apiDef.Endpoints...)
+		
+		fmt.Printf("基础 URL: %s\n", r.config.BaseURL)
+		fmt.Printf("端点数量: %d\n\n", len(apiDef.Endpoints))
+	} else {
+		return nil, fmt.Errorf("未指定规范文件")
 	}
-
-	// 打印测试信息
-	fmt.Printf("开始测试 API: %s (版本 %s)\n", apiDef.Title, apiDef.Version)
-	fmt.Printf("基础 URL: %s\n", r.config.BaseURL)
-	fmt.Printf("端点数量: %d\n\n", len(apiDef.Endpoints))
+	
+	// 打印总端点数量
+	fmt.Printf("总端点数量: %d\n\n", len(allEndpoints))
 
 	// 运行所有端点测试
-	for i, endpoint := range apiDef.Endpoints {
-		fmt.Printf("[%d/%d] 测试 %s %s... ", i+1, len(apiDef.Endpoints), endpoint.Method, endpoint.Path)
+	for i, endpoint := range allEndpoints {
+		fmt.Printf("[%d/%d] 测试 %s %s... ", i+1, len(allEndpoints), endpoint.Method, endpoint.Path)
 
 		// 提取路径参数和查询参数
 		pathParams := client.ExtractPathParams(endpoint)
@@ -81,8 +122,15 @@ func (r *Runner) Run() (*types.TestResult, error) {
 		}
 	}
 
+	// 创建一个合并的 API 定义用于报告生成
+	mergedApiDef := &parser.APIDefinition{
+		Title:     "合并的 API 定义",
+		Version:   "1.0",
+		Endpoints: allEndpoints,
+	}
+
 	// 生成测试报告
-	reportPath, err := reporter.GenerateReport(apiDef, r.results, r.config.OutputDir)
+	reportPath, err := reporter.GenerateReport(mergedApiDef, r.results, r.config.OutputDir)
 	if err != nil {
 		return nil, fmt.Errorf("生成测试报告失败: %v", err)
 	}

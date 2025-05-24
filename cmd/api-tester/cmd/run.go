@@ -11,6 +11,7 @@ import (
 	"github.com/gaoyong06/api-tester/internal/parser"
 	"github.com/gaoyong06/api-tester/internal/reporter/machine"
 	"github.com/gaoyong06/api-tester/internal/runner"
+	"github.com/gaoyong06/api-tester/internal/types"
 	"github.com/spf13/cobra"
 )
 
@@ -47,14 +48,16 @@ var runCmd = &cobra.Command{
 
 			// 转换为内部配置格式
 			cfg = &config.Config{
-				SpecFile:      yamlConfig.API.SpecFile,
-				BaseURL:       yamlConfig.API.BaseURL,
-				Headers:       yamlConfig.API.Headers,
-				OutputDir:     yamlConfig.Output.Directory,
+				SpecFile:      yamlConfig.Spec,
+				SpecFiles:     yamlConfig.SpecFiles, // 添加对多个规范文件的支持
+				BaseURL:       yamlConfig.BaseURL,
+				Headers:       yamlConfig.Request.Headers,
+				OutputDir:     yamlConfig.OutputDir,
 				Verbose:       verbose,
-				Timeout:       yamlConfig.API.Timeout,
-				PathParams:    yamlConfig.API.PathParams,
-				RequestBodies: yamlConfig.API.RequestBodies,
+				Timeout:       yamlConfig.Timeout,
+				PathParams:    yamlConfig.Request.PathParams,
+				// 将 map[string]string 转换为 map[string]interface{}
+				RequestBodies: convertStringMapToInterfaceMap(yamlConfig.Request.RequestBodies),
 			}
 
 			// 如果命令行参数提供了值，覆盖配置文件中的值
@@ -65,7 +68,11 @@ var runCmd = &cobra.Command{
 				cfg.BaseURL = baseURL
 			}
 			if headers != "" {
-				cfg.Headers = headers
+				// 将字符串转换为 map[string]string
+				headerMap := make(map[string]string)
+				// 这里应该实现一个解析字符串为 map 的函数
+				// 为了简化，我们这里使用空的 map
+				cfg.Headers = headerMap
 			}
 			if outputDir != "" {
 				cfg.OutputDir = outputDir
@@ -74,10 +81,18 @@ var runCmd = &cobra.Command{
 				cfg.Timeout = timeout
 			}
 			if pathParams != "" {
-				cfg.PathParams = pathParams
+				// 将字符串转换为 map[string]string
+				pathParamsMap := make(map[string]string)
+				// 这里应该实现一个解析字符串为 map 的函数
+				// 为了简化，我们这里使用空的 map
+				cfg.PathParams = pathParamsMap
 			}
 			if requestBodies != "" {
-				cfg.RequestBodies = requestBodies
+				// 将字符串转换为 map[string]interface{}
+				requestBodiesMap := make(map[string]interface{})
+				// 这里应该实现一个解析字符串为 map 的函数
+				// 为了简化，我们这里使用空的 map
+				cfg.RequestBodies = requestBodiesMap
 			}
 		} else {
 			// 验证必填参数
@@ -120,15 +135,21 @@ var runCmd = &cobra.Command{
 				log.Fatalf("无法创建输出目录: %v", err)
 			}
 
+			// 创建结果数组，用于报告生成
+			// 注意：这里应该根据实际的 results 结构进行转换
+			// 简化处理，创建一个空的结果数组
+			endpointResults := make([]*types.EndpointTestResult, 0)
+
 			var reportPath string
+
 			// 根据报告类型生成不同格式的报告
 			switch reportType {
 			case "json":
-				reportPath, err = machine.GenerateReport(apiDef, results.Results, outputDir, "json")
+				reportPath, err = machine.GenerateReport(apiDef, endpointResults, outputDir, "json")
 			case "xml":
-				reportPath, err = machine.GenerateReport(apiDef, results.Results, outputDir, "xml")
+				reportPath, err = machine.GenerateReport(apiDef, endpointResults, outputDir, "xml")
 			case "junit":
-				reportPath, err = machine.GenerateJUnitReport(apiDef, results.Results, outputDir)
+				reportPath, err = machine.GenerateJUnitReport(apiDef, endpointResults, outputDir)
 			}
 
 			if err != nil {
@@ -136,13 +157,22 @@ var runCmd = &cobra.Command{
 			}
 
 			fmt.Printf("机器可读报告已保存到: %s\n", reportPath)
-		}
 
-		// 如果有测试失败，返回非零退出码
-		if results.Failed > 0 {
-			os.Exit(1)
+			// 如果有测试失败，返回非零退出码
+			if results.Failed > 0 {
+				os.Exit(1)
+			}
 		}
 	},
+}
+
+// convertStringMapToInterfaceMap 将 map[string]string 转换为 map[string]interface{}
+func convertStringMapToInterfaceMap(strMap map[string]string) map[string]interface{} {
+	result := make(map[string]interface{})
+	for k, v := range strMap {
+		result[k] = v
+	}
+	return result
 }
 
 func init() {

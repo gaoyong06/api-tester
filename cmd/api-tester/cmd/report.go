@@ -45,20 +45,26 @@ u53efu4ee5u4f7fu7528u5df2u4fddu5b58u7684u6d4bu8bd5u7ed3u679cu6587u4ef6u6216u8005
 		var err error
 
 		if resultsFile != "" {
-			// u4eceu6587u4ef6u52a0u8f7du6d4bu8bd5u7ed3u679c
-			results, err = types.LoadTestResultsFromFile(resultsFile)
+			// u4eceu6587u4ef6u52a0u8f7du6d4bu8bd5u7ed3u679c			// 从文件加载测试结果
+			testResult, err := types.LoadTestResultsFromFile(resultsFile)
 			if err != nil {
 				log.Fatalf("u65e0u6cd5u52a0u8f7du6d4bu8bd5u7ed3u679cu6587u4ef6: %v", err)
 			}
+			// 使用测试结果中的详细结果
+			results = testResult.Results
 		} else {
 			// u4eceu914du7f6eu6587u4ef6u4e2du6307u5b9au7684u6700u65b0u6d4bu8bd5u7ed3u679cu52a0u8f7d
 			// u8fd9u91ccu53efu4ee5u5b9eu73b0u4eceu914du7f6eu6587u4ef6u4e2du6307u5b9au7684u76eeu5f55u627eu5230u6700u65b0u7684u6d4bu8bd5u7ed3u679cu6587u4ef6
-			// u8fd9u91ccu7b80u5316u5904u7406uff0cu5047u8bbeu6709u4e00u4e2au9ed8u8ba4u7684u7ed3u679cu6587u4ef6u4f4du7f6e
+			// u8fd9u91ccu7b80u5316u5904u7406uff0cu5047u8bbeu6709u4e00u4e2au9ed8u8ba4u7684u7ed3u679cu6587u4ef6u4f4du7f6e			// 从配置文件中指定的最新测试结果加载
+			// 这里可以实现从配置文件中指定的目录找到最新的测试结果文件
+			// 这里简化处理，假设有一个默认的结果文件位置
 			defaultResultsFile := filepath.Join(outputDir, "latest-results.json")
-			results, err = types.LoadTestResultsFromFile(defaultResultsFile)
+			testResult, err := types.LoadTestResultsFromFile(defaultResultsFile)
 			if err != nil {
 				log.Fatalf("u65e0u6cd5u52a0u8f7du9ed8u8ba4u6d4bu8bd5u7ed3u679cu6587u4ef6: %v", err)
 			}
+			// 使用测试结果中的详细结果
+			results = testResult.Results
 		}
 
 		// u52a0u8f7d API u5b9au4e49

@@ -146,15 +146,13 @@ func convertToOpenAPI3(data []byte, inputFormat, outputFile, outputFormat string
 // convertToOpenAPI2 将 API 规范转换为 OpenAPI/Swagger 2.0 格式
 func convertToOpenAPI2(data []byte, inputFormat, outputFile, outputFormat string) error {
 	// 解析输入文件为 OpenAPI 3.0
-	var openapi3 openapi3.T
+	var openapi3Doc openapi3.T
 	var err error
 
-	loader := openapi3.NewLoader()
-
 	if inputFormat == "json" {
-		err = json.Unmarshal(data, &openapi3)
+		err = json.Unmarshal(data, &openapi3Doc)
 	} else {
-		err = yaml.Unmarshal(data, &openapi3)
+		err = yaml.Unmarshal(data, &openapi3Doc)
 	}
 
 	if err != nil {
@@ -162,7 +160,7 @@ func convertToOpenAPI2(data []byte, inputFormat, outputFile, outputFormat string
 	}
 
 	// 转换为 OpenAPI/Swagger 2.0
-	swagger2, err := openapi2conv.FromV3(&openapi3)
+	swagger2, err := openapi2conv.FromV3(&openapi3Doc)
 	if err != nil {
 		return fmt.Errorf("无法转换为 OpenAPI 2.0: %v", err)
 	}

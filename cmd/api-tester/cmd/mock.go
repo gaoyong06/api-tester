@@ -15,7 +15,7 @@ import (
 
 var (
 	// mock u547du4ee4u7684u6807u5fd7
-	outputFile    string
+	mockOutputFile string
 	count         int
 	schemaPath    string
 	customRules   string
@@ -65,8 +65,8 @@ u652fu6301u81eau5b9au4e49u89c4u5219u6765u63a7u5236u7279u5b9au5b57u6bb5u7684u751f
 		}
 
 		// u786eu4fddu8f93u51fau76eeu5f55u5b58u5728
-		if outputFile != "" {
-			outputDir := filepath.Dir(outputFile)
+		if mockOutputFile != "" {
+			outputDir := filepath.Dir(mockOutputFile)
 			if err := os.MkdirAll(outputDir, 0755); err != nil {
 				log.Fatalf("u65e0u6cd5u521bu5efau8f93u51fau76eeu5f55: %v", err)
 			}
@@ -96,7 +96,7 @@ u652fu6301u81eau5b9au4e49u89c4u5219u6765u63a7u5236u7279u5b9au5b57u6bb5u7684u751f
 			}
 
 			// u8f93u51fau6240u6709u6a21u5f0fu6570u636e
-			outputMockData(result, outputFile, prettyPrint)
+			outputMockData(result, mockOutputFile, prettyPrint)
 		} else {
 			// u751fu6210u6307u5b9au6a21u5f0fu7684u6570u636e
 			var schema interface{}
@@ -135,7 +135,7 @@ u652fu6301u81eau5b9au4e49u89c4u5219u6765u63a7u5236u7279u5b9au5b57u6bb5u7684u751f
 				result = examples
 			}
 
-			outputMockData(result, outputFile, prettyPrint)
+			outputMockData(result, mockOutputFile, prettyPrint)
 		}
 	},
 }
@@ -156,7 +156,7 @@ func loadCustomRules(filePath string) (map[string]interface{}, error) {
 }
 
 // outputMockData u8f93u51fau6a21u62dfu6570u636e
-func outputMockData(data interface{}, outputFile string, prettyPrint bool) {
+func outputMockData(data interface{}, mockOutputFile string, prettyPrint bool) {
 	// u5e8fu5217u5316u6570u636e
 	var jsonData []byte
 	var err error
@@ -172,15 +172,15 @@ func outputMockData(data interface{}, outputFile string, prettyPrint bool) {
 	}
 
 	// u8f93u51fau6570u636e
-	if outputFile == "" {
+	if mockOutputFile == "" {
 		// u8f93u51fau5230u6807u51c6u8f93u51fa
 		fmt.Println(string(jsonData))
 	} else {
 		// u8f93u51fau5230u6587u4ef6
-		if err := ioutil.WriteFile(outputFile, jsonData, 0644); err != nil {
+		if err := ioutil.WriteFile(mockOutputFile, jsonData, 0644); err != nil {
 			log.Fatalf("u65e0u6cd5u5199u5165u8f93u51fau6587u4ef6: %v", err)
 		}
-		fmt.Printf("u6a21u62dfu6570u636eu5df2u4fddu5b58u5230: %s\n", outputFile)
+		fmt.Printf("u6a21u62dfu6570u636eu5df2u4fddu5b58u5230: %s\n", mockOutputFile)
 	}
 }
 
@@ -188,7 +188,7 @@ func init() {
 	rootCmd.AddCommand(mockCmd)
 
 	// u672cu5730u6807u5fd7
-	mockCmd.Flags().StringVar(&outputFile, "output-file", "", "u8f93u51fau6587u4ef6u8defu5f84 (u9ed8u8ba4u8f93u51fau5230u6807u51c6u8f93u51fa)")
+	mockCmd.Flags().StringVar(&mockOutputFile, "output-file", "", "u8f93u51fau6587u4ef6u8defu5f84 (u9ed8u8ba4u8f93u51fau5230u6807u51c6u8f93u51fa)")
 	mockCmd.Flags().IntVar(&count, "count", 1, "u751fu6210u7684u6570u636eu6570u91cf")
 	mockCmd.Flags().StringVar(&schemaPath, "schema", "", "u8981u751fu6210u6570u636eu7684u6a21u5f0fu540du79f0u6216u8defu5f84")
 	mockCmd.Flags().StringVar(&customRules, "rules", "", "u81eau5b9au4e49u751fu6210u89c4u5219u6587u4ef6 (JSON u683cu5f0f)")

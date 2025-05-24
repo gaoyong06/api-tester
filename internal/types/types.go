@@ -1,6 +1,9 @@
 package types
 
 import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"time"
 )
 
@@ -40,4 +43,23 @@ type TestResult struct {
 	Failed int
 	// 测试报告路径
 	ReportPath string
+	// 测试结果详情
+	Results []*EndpointTestResult `json:"results"`
+}
+
+// LoadTestResultsFromFile 从文件加载测试结果
+func LoadTestResultsFromFile(filePath string) (*TestResult, error) {
+	// 读取文件内容
+	data, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("无法读取测试结果文件: %v", err)
+	}
+
+	// 解析 JSON
+	result := &TestResult{}
+	if err := json.Unmarshal(data, result); err != nil {
+		return nil, fmt.Errorf("无法解析测试结果: %v", err)
+	}
+
+	return result, nil
 }
