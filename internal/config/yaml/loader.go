@@ -86,7 +86,8 @@ func setDefaults(config *Config) {
 // validateConfig 验证配置是否有效
 func validateConfig(config *Config) error {
 	// 验证API规范文件
-	if config.Spec == "" {
+	// 如果 Spec 为空，检查 SpecFiles 是否有值
+	if config.Spec == "" && len(config.SpecFiles) == 0 {
 		return fmt.Errorf("API规范文件路径不能为空")
 	}
 
