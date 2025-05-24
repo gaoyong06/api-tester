@@ -317,15 +317,10 @@ func (g *MockDataGenerator) applyCustomRule(propName string, schema interface{})
 
 	// 检查是否有正则表达式匹配的规则
 	for pattern, value := range g.Rules {
-		// 跳过非字符串键
-		patternStr, ok := pattern.(string)
-		if !ok {
-			continue
-		}
 
 		// 如果键以 "regex:" 开头，则尝试正则表达式匹配
-		if strings.HasPrefix(patternStr, "regex:") {
-			regexPattern := strings.TrimPrefix(patternStr, "regex:")
+		if strings.HasPrefix(pattern, "regex:") {
+			regexPattern := strings.TrimPrefix(pattern, "regex:")
 			reg, err := regexp.Compile(regexPattern)
 			if err != nil {
 				continue

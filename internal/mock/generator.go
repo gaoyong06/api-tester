@@ -2,7 +2,6 @@ package mock
 
 import (
 	"fmt"
-	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -98,18 +97,22 @@ func (g *Generator) GenerateFromSchema(schemaRef *openapi3.SchemaRef) (interface
 	}
 
 	// 根据 schema 类型生成数据
-	switch schema.Type {
-	case "object":
+	if schema.Type == nil {
+		return nil, fmt.Errorf("未指定类型")
+	}
+
+	// 检查 schema 类型
+	if schema.Type.Is("object") {
 		return g.generateObject(schema)
-	case "array":
+	} else if schema.Type.Is("array") {
 		return g.generateArray(schema)
-	case "string":
+	} else if schema.Type.Is("string") {
 		return g.generateString(schema, "")
-	case "number", "integer":
+	} else if schema.Type.Is("number") || schema.Type.Is("integer") {
 		return g.generateNumber(schema)
-	case "boolean":
+	} else if schema.Type.Is("boolean") {
 		return gofakeit.Bool(), nil
-	default:
+	} else {
 		return nil, fmt.Errorf("不支持的类型: %s", schema.Type)
 	}
 }
@@ -162,13 +165,6 @@ func (g *Generator) generateArray(schema *openapi3.Schema) ([]interface{}, error
 	// 确定数组长度
 	minItems := 1
 	maxItems := 5
-
-	if schema.MinItems != nil {
-		minItems = int(*schema.MinItems)
-	}
-	if schema.MaxItems != nil {
-		maxItems = int(*schema.MaxItems)
-	}
 
 	// 如果最小值大于最大值，则交换
 	if minItems > maxItems {
@@ -287,7 +283,7 @@ func (g *Generator) generateNumber(schema *openapi3.Schema) (interface{}, error)
 		}
 	default:
 		// 生成随机值
-		if schema.Type == "integer" {
+		if schema.Type != nil && schema.Type.Is("integer") {
 			return gofakeit.Number(int(min), int(max)), nil
 		}
 		return gofakeit.Float64Range(min, max), nil

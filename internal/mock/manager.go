@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gaoyong06/api-tester/internal/config/yaml"
+	configyaml "github.com/gaoyong06/api-tester/internal/config/yaml"
 	"github.com/getkin/kin-openapi/openapi3"
-	"gopkg.in/yaml.v3"
+	yaml "gopkg.in/yaml.v3"
 )
 
 // TestDataManager 测试数据管理器
@@ -19,9 +19,9 @@ type TestDataManager struct {
 	// 测试数据存储
 	Data map[string]interface{}
 	// 数据源配置
-	Sources []yaml.DataSource
+	Sources []configyaml.DataSource
 	// 配置
-	Config *yaml.Config
+	Config *configyaml.Config
 	// OpenAPI 文档
 	Doc *openapi3.T
 	// Mock 生成器
@@ -29,7 +29,7 @@ type TestDataManager struct {
 }
 
 // NewTestDataManager 创建测试数据管理器
-func NewTestDataManager(config *yaml.Config, doc *openapi3.T) *TestDataManager {
+func NewTestDataManager(config *configyaml.Config, doc *openapi3.T) *TestDataManager {
 	return &TestDataManager{
 		Data:      make(map[string]interface{}),
 		Sources:   config.TestData.Sources,
@@ -58,7 +58,7 @@ func (m *TestDataManager) LoadData() error {
 }
 
 // loadDataSource 加载单个数据源
-func (m *TestDataManager) loadDataSource(source yaml.DataSource) (map[string]interface{}, error) {
+func (m *TestDataManager) loadDataSource(source configyaml.DataSource) (map[string]interface{}, error) {
 	switch source.Type {
 	case "file":
 		return m.loadFromFile(source.Path)
