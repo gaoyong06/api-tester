@@ -22,6 +22,8 @@ type APIClient struct {
 	headers map[string]string
 	// 是否显示详细日志
 	verbose bool
+	// 请求体模板
+	requestBodies map[string]interface{}
 }
 
 // Response 表示API响应
@@ -39,7 +41,7 @@ type Response struct {
 }
 
 // NewAPIClient 创建一个新的API客户端
-func NewAPIClient(baseURL string, headers map[string]string, timeout int, verbose bool) *APIClient {
+func NewAPIClient(baseURL string, headers map[string]string, timeout int, verbose bool, requestBodies map[string]interface{}) *APIClient {
 	// 确保基础URL以/结尾
 	if !strings.HasSuffix(baseURL, "/") {
 		baseURL += "/"
@@ -49,29 +51,50 @@ func NewAPIClient(baseURL string, headers map[string]string, timeout int, verbos
 		client: &http.Client{
 			Timeout: time.Duration(timeout) * time.Second,
 		},
-		baseURL: baseURL,
-		headers: headers,
-		verbose: verbose,
+		baseURL:      baseURL,
+		headers:      headers,
+		verbose:      verbose,
+		requestBodies: requestBodies,
 	}
 }
 
 // SendRequest 发送API请求
-func (c *APIClient) SendRequest(endpoint *parser.Endpoint, pathParams map[string]string, queryParams map[string]string) *Response {
+func (c *APIClient) SendRequest(endpoint *parser.Endpoint, pathParams map[string]string, queryParams map[string]string) (*Response, error) {
 	// 构建URL
 	url := c.buildURL(endpoint.Path, pathParams, queryParams)
 
-	// 创建请求体
+	// 准备请求体
 	var reqBody *bytes.Buffer
-	if endpoint.RequestBody != "" {
-		reqBody = bytes.NewBufferString(endpoint.RequestBody)
-	} else {
+	
+	// 检查是否有请求体模板
+	if endpoint.Method == "POST" || endpoint.Method == "PUT" || endpoint.Method == "PATCH" {
+		// 尝试从请求体模板中获取
+		if c.requestBodies != nil {
+			// 使用路径作为键名查找请求体模板
+			if template, ok := c.requestBodies[endpoint.Path]; ok {
+				// 将模板转换为JSON
+				jsonData, err := json.Marshal(template)
+				if err != nil {
+					return nil, fmt.Errorf("序列化请求体模板失败: %v", err)
+				}
+				reqBody = bytes.NewBuffer(jsonData)
+				
+				if c.verbose {
+					fmt.Printf("使用请求体模板: %s\n", string(jsonData))
+				}
+			}
+		}
+	}
+
+	// 如果没有找到模板，使用空请求体
+	if reqBody == nil {
 		reqBody = bytes.NewBufferString("")
 	}
 
 	// 创建请求
 	req, err := http.NewRequest(endpoint.Method, url, reqBody)
 	if err != nil {
-		return &Response{Error: fmt.Errorf("创建请求失败: %v", err)}
+		return &Response{Error: fmt.Errorf("创建请求失败: %v", err)}, nil
 	}
 
 	// 添加全局请求头
@@ -80,7 +103,7 @@ func (c *APIClient) SendRequest(endpoint *parser.Endpoint, pathParams map[string
 	}
 
 	// 添加内容类型头（如果请求体不为空）
-	if reqBody.Len() > 0 {
+	if reqBody != nil && reqBody.Len() > 0 {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
@@ -97,7 +120,7 @@ func (c *APIClient) SendRequest(endpoint *parser.Endpoint, pathParams map[string
 	// 发送请求
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return &Response{Error: fmt.Errorf("发送请求失败: %v", err)}
+		return &Response{Error: fmt.Errorf("发送请求失败: %v", err)}, nil
 	}
 	defer resp.Body.Close()
 
@@ -105,30 +128,30 @@ func (c *APIClient) SendRequest(endpoint *parser.Endpoint, pathParams map[string
 	responseTime := time.Since(startTime).Milliseconds()
 
 	// 读取响应体
-	body, err := ioutil.ReadAll(resp.Body)
+	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return &Response{Error: fmt.Errorf("读取响应体失败: %v", err)}
+		return &Response{Error: fmt.Errorf("读取响应体失败: %v", err)}, nil
 	}
 
 	// 打印详细日志
 	if c.verbose {
 		fmt.Printf("\n> %s %s\n", endpoint.Method, url)
 		fmt.Printf("> 请求头: %v\n", req.Header)
-		if reqBody.Len() > 0 {
+		if reqBody != nil && reqBody.Len() > 0 {
 			fmt.Printf("> 请求体: %s\n", reqBody.String())
 		}
 		fmt.Printf("< 状态码: %d\n", resp.StatusCode)
 		fmt.Printf("< 响应头: %v\n", resp.Header)
-		fmt.Printf("< 响应体: %s\n", string(body))
+		fmt.Printf("< 响应体: %s\n", string(respBody))
 		fmt.Printf("< 响应时间: %d ms\n", responseTime)
 	}
 
 	return &Response{
 		StatusCode:   resp.StatusCode,
 		Headers:      resp.Header,
-		Body:         body,
+		Body:         respBody,
 		ResponseTime: responseTime,
-	}
+	}, nil
 }
 
 // buildURL 构建完整的请求URL

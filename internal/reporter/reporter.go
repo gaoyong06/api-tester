@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gaoyong06/api-tester/internal/parser"
@@ -95,7 +96,26 @@ func GenerateReport(apiDef *parser.APIDefinition, results []*types.EndpointTestR
 	defer reportFile.Close()
 
 	// 使用模板生成报告
-	tmpl, err := template.New("report").Parse(reportTemplate)
+	tmpl := template.New("report")
+
+	// 添加自定义函数
+	tmpl.Funcs(template.FuncMap{
+		"lower": strings.ToLower,
+		"statusClass": func(status int) string {
+			if status >= 200 && status < 300 {
+				return "2xx"
+			} else if status >= 400 && status < 500 {
+				return "4xx"
+			} else if status >= 500 {
+				return "5xx"
+			}
+			return ""
+		},
+		"join": strings.Join,
+	})
+
+	// 解析模板
+	tmpl, err = tmpl.Parse(reportTemplate)
 	if err != nil {
 		return "", fmt.Errorf("无法解析报告模板: %v", err)
 	}

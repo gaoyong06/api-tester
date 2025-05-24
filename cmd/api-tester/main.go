@@ -18,6 +18,8 @@ func main() {
 	outputDir := flag.String("output", "./reports", "测试报告输出目录 (可选)")
 	verbose := flag.Bool("verbose", false, "显示详细日志 (可选)")
 	timeout := flag.Int("timeout", 30, "请求超时时间 (秒) (可选)")
+	pathParams := flag.String("path-params", "", "路径参数文件 (JSON 格式，可选)")
+	requestBodies := flag.String("request-bodies", "", "请求体模板文件 (JSON 格式，可选)")
 
 	// 解析命令行参数
 	flag.Parse()
@@ -29,7 +31,7 @@ func main() {
 	}
 
 	// 创建配置
-	cfg, err := config.NewConfig(*specFile, *baseURL, *headers, *outputDir, *verbose, *timeout)
+	cfg, err := config.NewConfig(*specFile, *baseURL, *headers, *outputDir, *verbose, *timeout, *pathParams, *requestBodies)
 	if err != nil {
 		log.Fatalf("配置错误: %v", err)
 	}

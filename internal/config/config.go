@@ -21,10 +21,14 @@ type Config struct {
 	Verbose bool
 	// 请求超时时间 (秒)
 	Timeout int
+	// 路径参数替换映射
+	PathParams map[string]string
+	// 请求体模板映射
+	RequestBodies map[string]interface{}
 }
 
 // NewConfig 创建新的配置
-func NewConfig(specFile, baseURL, headersJSON, outputDir string, verbose bool, timeout int) (*Config, error) {
+func NewConfig(specFile, baseURL, headersJSON, outputDir string, verbose bool, timeout int, pathParamsFile, requestBodiesFile string) (*Config, error) {
 	// 验证规范文件是否存在
 	if _, err := os.Stat(specFile); os.IsNotExist(err) {
 		return nil, fmt.Errorf("规范文件不存在: %s", specFile)
@@ -45,13 +49,45 @@ func NewConfig(specFile, baseURL, headersJSON, outputDir string, verbose bool, t
 		}
 	}
 
+	// 解析路径参数
+	pathParams := make(map[string]string)
+	if pathParamsFile != "" {
+		// 读取路径参数文件
+		pathParamsData, err := os.ReadFile(pathParamsFile)
+		if err != nil {
+			return nil, fmt.Errorf("无法读取路径参数文件: %v", err)
+		}
+
+		// 解析 JSON
+		if err := json.Unmarshal(pathParamsData, &pathParams); err != nil {
+			return nil, fmt.Errorf("无法解析路径参数 JSON: %v", err)
+		}
+	}
+
+	// 解析请求体模板
+	requestBodies := make(map[string]interface{})
+	if requestBodiesFile != "" {
+		// 读取请求体模板文件
+		requestBodiesData, err := os.ReadFile(requestBodiesFile)
+		if err != nil {
+			return nil, fmt.Errorf("无法读取请求体模板文件: %v", err)
+		}
+
+		// 解析 JSON
+		if err := json.Unmarshal(requestBodiesData, &requestBodies); err != nil {
+			return nil, fmt.Errorf("无法解析请求体模板 JSON: %v", err)
+		}
+	}
+
 	// 返回配置
 	return &Config{
-		SpecFile:  filepath.Clean(specFile),
-		BaseURL:   baseURL,
-		Headers:   headers,
-		OutputDir: outputDir,
-		Verbose:   verbose,
-		Timeout:   timeout,
+		SpecFile:     filepath.Clean(specFile),
+		BaseURL:      baseURL,
+		Headers:      headers,
+		OutputDir:    outputDir,
+		Verbose:      verbose,
+		Timeout:      timeout,
+		PathParams:   pathParams,
+		RequestBodies: requestBodies,
 	}, nil
 }

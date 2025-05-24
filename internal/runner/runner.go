@@ -26,7 +26,7 @@ type Runner struct {
 func NewRunner(cfg *config.Config) *Runner {
 	return &Runner{
 		config:  cfg,
-		client:  client.NewAPIClient(cfg.BaseURL, cfg.Headers, cfg.Timeout, cfg.Verbose),
+		client:  client.NewAPIClient(cfg.BaseURL, cfg.Headers, cfg.Timeout, cfg.Verbose, cfg.RequestBodies),
 		results: make([]*types.EndpointTestResult, 0),
 	}
 }
@@ -50,26 +50,34 @@ func (r *Runner) Run() (*types.TestResult, error) {
 
 		// 提取路径参数和查询参数
 		pathParams := client.ExtractPathParams(endpoint)
+		// 使用配置中的路径参数覆盖默认值
+		for name, value := range r.config.PathParams {
+			pathParams[name] = value
+		}
 		queryParams := client.ExtractQueryParams(endpoint)
 
 		// 发送请求
-		resp := r.client.SendRequest(endpoint, pathParams, queryParams)
+		response, err := r.client.SendRequest(endpoint, pathParams, queryParams)
+		if err != nil {
+			fmt.Printf("发送请求出错: %v\n", err)
+			continue
+		}
 
 		// 验证响应
-		validation := validator.ValidateResponse(endpoint, resp)
+		validationResults := validator.ValidateResponse(endpoint, response)
 
 		// 保存测试结果
 		r.results = append(r.results, &types.EndpointTestResult{
 			Endpoint:   endpoint,
-			Validation: validation,
+			Validation: validationResults,
 			TestTime:   time.Now(),
 		})
 
 		// 打印测试结果
-		if validation.Passed {
-			fmt.Printf("通过 (%d ms)\n", validation.ResponseTime)
+		if validationResults.Passed {
+			fmt.Printf("通过 (%d ms)\n", validationResults.ResponseTime)
 		} else {
-			fmt.Printf("失败: %s\n", validation.FailureReason)
+			fmt.Printf("失败: %s\n", validationResults.FailureReason)
 		}
 	}
 
