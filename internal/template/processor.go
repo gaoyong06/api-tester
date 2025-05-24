@@ -71,16 +71,16 @@ func (tp *Processor) RegisterFunctions() {
 		},
 
 		// 字符串函数
-		"lower": strings.ToLower,
-		"upper": strings.ToUpper,
-		"title": strings.Title,
-		"trim": strings.TrimSpace,
-		"replace": strings.ReplaceAll,
-		"contains": strings.Contains,
+		"lower":     strings.ToLower,
+		"upper":     strings.ToUpper,
+		"title":     strings.Title,
+		"trim":      strings.TrimSpace,
+		"replace":   strings.ReplaceAll,
+		"contains":  strings.Contains,
 		"hasPrefix": strings.HasPrefix,
 		"hasSuffix": strings.HasSuffix,
-		"join": strings.Join,
-		"split": strings.Split,
+		"join":      strings.Join,
+		"split":     strings.Split,
 		"substr": func(s string, start, length int) string {
 			if start < 0 || start >= len(s) {
 				return ""

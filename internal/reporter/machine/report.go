@@ -291,39 +291,43 @@ func prepareMachineReport(apiDef *parser.APIDefinition, results []*types.Endpoin
 	return report
 }
 
+// JUnitTestSuite JUnit测试套件结构
+type JUnitTestSuite struct {
+	XMLName    xml.Name        `xml:"testsuite"`
+	Name       string          `xml:"name,attr"`
+	Tests      int             `xml:"tests,attr"`
+	Failures   int             `xml:"failures,attr"`
+	Errors     int             `xml:"errors,attr"`
+	Skipped    int             `xml:"skipped,attr"`
+	Time       float64         `xml:"time,attr"`
+	Timestamp  string          `xml:"timestamp,attr"`
+	Properties []JUnitProperty `xml:"properties>property,omitempty"`
+	TestCases  []JUnitTestCase `xml:"testcase"`
+}
+
+// JUnitProperty JUnit属性结构
+type JUnitProperty struct {
+	Name  string `xml:"name,attr"`
+	Value string `xml:"value,attr"`
+}
+
+// JUnitTestCase JUnit测试用例结构
+type JUnitTestCase struct {
+	Name      string       `xml:"name,attr"`
+	Classname string       `xml:"classname,attr"`
+	Time      float64      `xml:"time,attr"`
+	Failure   *JUnitFailure `xml:"failure,omitempty"`
+}
+
+// JUnitFailure JUnit失败信息结构
+type JUnitFailure struct {
+	Message string `xml:"message,attr"`
+	Type    string `xml:"type,attr"`
+	Content string `xml:",chardata"`
+}
+
 // GenerateJUnitReport 生成 JUnit 格式的测试报告
 func GenerateJUnitReport(apiDef *parser.APIDefinition, results []*types.EndpointTestResult, outputDir string) (string, error) {
-	// JUnit XML 格式
-	type JUnitTestSuite struct {
-		XMLName    xml.Name        `xml:"testsuite"`
-		Name       string          `xml:"name,attr"`
-		Tests      int             `xml:"tests,attr"`
-		Failures   int             `xml:"failures,attr"`
-		Errors     int             `xml:"errors,attr"`
-		Skipped    int             `xml:"skipped,attr"`
-		Time       float64         `xml:"time,attr"`
-		Timestamp  string          `xml:"timestamp,attr"`
-		Properties []JUnitProperty `xml:"properties>property,omitempty"`
-		TestCases  []JUnitTestCase `xml:"testcase"`
-	}
-
-	type JUnitProperty struct {
-		Name  string `xml:"name,attr"`
-		Value string `xml:"value,attr"`
-	}
-
-	type JUnitTestCase struct {
-		Name      string       `xml:"name,attr"`
-		Classname string       `xml:"classname,attr"`
-		Time      float64      `xml:"time,attr"`
-		Failure   *JUnitFailure `xml:"failure,omitempty"`
-	}
-
-	type JUnitFailure struct {
-		Message string `xml:"message,attr"`
-		Type    string `xml:"type,attr"`
-		Content string `xml:",chardata"`
-	}
 
 	// 创建输出目录
 	if err := os.MkdirAll(outputDir, 0755); err != nil {

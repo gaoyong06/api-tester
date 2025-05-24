@@ -93,9 +93,3 @@ type Step struct {
 	// 依赖步骤
 	Dependencies []string `yaml:"dependencies"`
 }
-
-// LoadConfig 从YAML文件加载配置
-func LoadConfig(filePath string) (*Config, error) {
-	// 实现将在另一个文件中
-	return nil, nil
-}

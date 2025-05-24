@@ -99,7 +99,7 @@ func (m *Manager) runScenarioSteps(scenario *yaml.Scenario) ([]*types.EndpointTe
 	// 运行所有步骤
 	for _, step := range scenario.Steps {
 		// 检查依赖是否已完成
-		if !m.checkDependencies(step) {
+		if !m.checkDependencies(&step) {
 			fmt.Printf("跳过步骤 %s，因为依赖未满足\n", step.Name)
 			continue
 		}
@@ -120,10 +120,10 @@ func (m *Manager) runScenarioSteps(scenario *yaml.Scenario) ([]*types.EndpointTe
 		}
 
 		// 处理变量替换
-		pathParams, queryParams, requestBody := m.processVariables(step)
+		pathParams, queryParams, _ := m.processVariables(&step)
 
 		// 发送请求
-		response, err := m.Client.SendRequest(endpoint, pathParams, queryParams, []byte(requestBody))
+		response, err := m.Client.SendRequest(endpoint, pathParams, queryParams)
 		if err != nil {
 			fmt.Printf("请求失败: %v\n", err)
 			continue
