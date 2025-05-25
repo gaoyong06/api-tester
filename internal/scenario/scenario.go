@@ -135,13 +135,13 @@ func (m *Manager) runScenarioSteps(scenario *yaml.Scenario) ([]*types.EndpointTe
 		}
 
 		// 处理变量替换
-		pathParams, queryParams, _ := m.processVariables(&step)
+		pathParams, queryParams, requestBody := m.processVariables(&step)
 
 		// 更新端点路径，使用处理后的路径
 		endpoint.Path = step.Endpoint
 
-		// 发送请求
-		response, err := m.Client.SendRequest(endpoint, pathParams, queryParams)
+		// 发送请求，包括请求体
+		response, err := m.Client.SendRequest(endpoint, pathParams, queryParams, requestBody)
 		if err != nil {
 			fmt.Printf("请求失败: %v\n", err)
 			continue

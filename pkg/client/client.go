@@ -59,15 +59,21 @@ func NewAPIClient(baseURL string, headers map[string]string, timeout int, verbos
 }
 
 // SendRequest 发送API请求
-func (c *APIClient) SendRequest(endpoint *parser.Endpoint, pathParams map[string]string, queryParams map[string]string) (*Response, error) {
+func (c *APIClient) SendRequest(endpoint *parser.Endpoint, pathParams map[string]string, queryParams map[string]string, customRequestBody ...string) (*Response, error) {
 	// 构建URL
 	url := c.buildURL(endpoint.Path, pathParams, queryParams)
 
 	// 准备请求体
 	var reqBody *bytes.Buffer
 	
-	// 检查是否有请求体模板
-	if endpoint.Method == "POST" || endpoint.Method == "PUT" || endpoint.Method == "PATCH" {
+	// 检查是否提供了自定义请求体
+	if len(customRequestBody) > 0 && customRequestBody[0] != "" {
+		// 使用提供的自定义请求体
+		reqBody = bytes.NewBufferString(customRequestBody[0])
+		if c.verbose {
+			fmt.Printf("使用自定义请求体: %s\n", customRequestBody[0])
+		}
+	} else if endpoint.Method == "POST" || endpoint.Method == "PUT" || endpoint.Method == "PATCH" {
 		// 尝试从请求体模板中获取
 		if c.requestBodies != nil {
 			// 使用路径作为键名查找请求体模板
