@@ -56,6 +56,8 @@ var runCmd = &cobra.Command{
 				PathParams:    yamlConfig.Request.PathParams,
 				// 将 map[string]string 转换为 map[string]interface{}
 				RequestBodies: convertStringMapToInterfaceMap(yamlConfig.Request.RequestBodies),
+				// 保存YAML配置对象，用于场景测试
+				YamlConfig:    yamlConfig,
 			}
 
 			// 如果命令行参数提供了值，覆盖配置文件中的值

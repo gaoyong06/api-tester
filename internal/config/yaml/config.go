@@ -16,6 +16,8 @@ type Config struct {
 	Timeout int `yaml:"timeout"`
 	// 是否详细输出
 	Verbose bool `yaml:"verbose"`
+	// 默认值配置
+	DefaultValues map[string]string `yaml:"default_values"`
 
 	// 请求配置
 	Request struct {
@@ -92,6 +94,10 @@ type Step struct {
 	Method string `yaml:"method"`
 	// 请求体 - 支持字符串或对象格式
 	RequestBody interface{} `yaml:"request_body"`
+	// 路径参数
+	PathParams map[string]string `yaml:"path_params"`
+	// 查询参数
+	QueryParams map[string]string `yaml:"query_params"`
 	// 提取变量
 	Extract map[string]string `yaml:"extract"`
 	// 依赖步骤

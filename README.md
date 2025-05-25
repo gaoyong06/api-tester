@@ -4,6 +4,15 @@
 
 API-Tester 是一个基于 Go 语言开发的通用 API 自动化测试工具，可以根据 OpenAPI/Swagger 规范文件自动测试 API 接口并生成详细的测试报告。本工具支持模板处理、测试数据管理、测试场景定义、模拟数据生成和多种格式的测试报告输出，可以无缝对接到其他项目的测试流程中。
 
+## 最近更新
+
+### 2025-05-25
+
+- 增强了路径参数和查询参数的处理
+- 在 `yaml.Step` 结构体中显式添加了 `PathParams` 和 `QueryParams` 字段
+- 实现了自动处理URL路径中的参数占位符，将 `{parameter_name}` 替换为实际值
+- 添加了更多日志输出，帮助用户理解变量替换过程
+
 ## 主要功能
 
 - 自动解析 OpenAPI/Swagger 规范文件
@@ -247,6 +256,7 @@ scenarios:
 ```
 
 ## 模板使用指南
+
 API-Tester 支持在请求路径、请求参数和请求体中使用模板变量和函数。模板使用 Go 的模板语法，用 {{}} 包裹。
 
 ### 基本变量替换
@@ -504,10 +514,86 @@ extract:
 提取的数据可以在后续步骤中通过模板变量引用：
 
 ```yaml
-path: /users/{{.userId}}
+endpoint: /v1/events/{{.userId}}
 headers:
   Authorization: "Bearer {{.token}}"
 ```
+
+### 变量优先级
+
+在测试执行过程中，变量替换遵循以下优先级顺序：
+
+1. **步骤中显式定义的路径参数和查询参数**：在步骤中通过 `path_params` 和 `query_params` 直接定义的参数具有最高优先级
+2. **提取的变量**：通过 `extract` 从之前的响应中提取的数据具有第二优先级
+3. **全局变量**：在配置文件的 `variables` 部分定义的全局变量具有第三优先级
+4. **默认值**：如果以上都未找到匹配的变量，系统会尝试使用内置的默认值
+
+这种优先级设计确保了动态提取的数据（如新创建的资源ID）会覆盖静态定义的全局变量，使测试能够正确处理依赖关系。
+
+### 路径参数和查询参数
+
+在测试步骤中，可以使用 `path_params` 和 `query_params` 字段来指定路径参数和查询参数：
+
+```yaml
+# 路径参数示例
+endpoint: /v1/events/{event_id}/guests/{id}
+method: GET
+path_params:
+  event_id: "{{.event_id}}"  # 使用提取的活动ID
+  id: "{{.guest_id}}"  # 使用提取的嘉宾 ID
+
+# 查询参数示例
+endpoint: /v1/events
+method: GET
+query_params:
+  limit: "10"
+  offset: "0"
+  sort: "created_at:desc"
+```
+
+系统会自动处理路径中的参数占位符，将 `{parameter_name}` 替换为 `path_params` 中指定的实际值。
+
+#### 变量替换示例
+
+假设有以下配置：
+
+```yaml
+# 全局变量
+variables:
+  eventId: 87
+  userId: 1001
+
+scenarios:
+  - name: 变量优先级测试
+    steps:
+      - name: 创建事件
+        endpoint: /v1/events
+        method: POST
+        request_body:
+          name: "测试事件"
+        assert:
+          status: 201
+        extract:
+          eventId: $.id  # 假设返回 id: 123
+
+      - name: 获取事件详情
+        endpoint: /v1/events/{event_id}
+        method: GET
+        path_params:
+          event_id: 456  # 显式定义路径参数
+        assert:
+          status: 200
+```
+
+在这个例子中：
+- 第一步提取了 `eventId: 123`
+- 第二步显式定义了 `event_id: 456`
+- 全局变量中定义了 `eventId: 87`
+
+根据优先级规则，第二步中的 `{event_id}` 将被替换为 `456`（显式路径参数），而不是 `123`（提取的变量）或 `87`（全局变量）。
+
+如果第二步没有显式定义 `path_params`，则会使用提取的变量 `eventId: 123`。
+如果既没有显式定义也没有提取变量，则会使用全局变量 `eventId: 87`。
 
 ### 断言
 
@@ -584,7 +670,6 @@ API-Tester 支持生成多种格式的测试报告：
 
 ### JUnit 报告
 
-
 生成 JUnit 格式的报告，便于与 CI/CD 系统集成。
 
 ```bash
@@ -616,18 +701,16 @@ specFiles:
   - ./api/openapi/v1/service1.swagger.json
   - ./api/openapi/v1/service2.swagger.json
 
-# API 基础 URL
+# API 基础配置
 base_url: http://localhost:8080
-# 请求超时时间（秒）
 timeout: 30
-# 是否详细输出
 verbose: true
 
 # 请求配置
 request:
   # 请求头
   headers:
-    Authorization: Bearer {{.token}}
+    X-API-Key: test-api-key
     Content-Type: application/json
   # 路径参数（可选）
   path_params:
@@ -664,9 +747,18 @@ test_data:
       path: ./testdata/data.json
 
 # 全局变量定义
+# 全局变量可以在所有测试场景中使用，通过 {{.变量名}} 语法引用
 variables:
   userId: 1001
   projectId: 2002
+  eventId: 87
+  tableId: 1
+  guestId: 1
+  seatId: 1
+  taskId: 1
+  groupId: 1
+  relationshipId: 1
+  templateId: 1
 
 # 测试场景
 scenarios:
@@ -674,8 +766,10 @@ scenarios:
     description: 测试基本功能和关键端点
     steps:
       - name: 获取用户信息
-        endpoint: /v1/users/{{.userId}}
+        endpoint: /v1/users/{id}
         method: GET
+        path_params:
+          id: "{{.userId}}"
         assert:
           status: 200
         extract:
@@ -691,7 +785,14 @@ scenarios:
         assert:
           status: 201
 
-      # 更多测试步骤...
+      - name: 获取项目列表
+        endpoint: /v1/projects
+        method: GET
+        query_params:
+          limit: "10"
+          owner: "{{.userName}}"
+        assert:
+          status: 200
 ```
 
 #### 选项 2：拆分配置文件
@@ -715,6 +816,7 @@ verbose: true
 
 # 请求配置
 request:
+  # 请求头
   headers:
     X-API-Key: test-api-key
     Content-Type: application/json
@@ -731,10 +833,14 @@ scenarios:
     description: 测试基本功能和关键端点
     steps:
       - name: 获取用户信息
-        endpoint: /v1/users/{{.userId}}
+        endpoint: /v1/users/{id}
         method: GET
+        path_params:
+          id: "{{.userId}}"
         assert:
           status: 200
+        extract:
+          userName: $.name
 ```
 
 **场景配置文件 (config/scenarios/tables.yaml)**
@@ -752,6 +858,8 @@ scenarios:
           capacity: 10
         assert:
           status: 201
+        extract:
+          tableId: $.id
 ```
 
 配置文件结构示例：
@@ -821,6 +929,38 @@ jobs:
           name: api-test-reports
           path: ./test-reports
 ```
+
+## 调试与故障排除
+
+### 启用详细日志
+
+使用 `--verbose` 标志可以启用详细日志输出：
+
+```bash
+api-tester run --config config.yaml --verbose
+```
+
+这将显示每个请求和响应的详细信息，包括：
+- 请求URL、方法和头信息
+- 请求体（如果有）
+- 响应状态码和头信息
+- 响应体
+- 变量替换过程（包括变量来源和最终值）
+- 断言结果
+
+### 变量替换日志
+
+在详细模式下，系统会输出变量替换的详细日志，帮助您理解变量是如何被处理的：
+
+```
+替换占位符 {event_id} 为路径参数值: 123
+替换占位符 {user_id} 为上下文变量值: 456
+替换占位符 {group_id} 为全局变量值: 789
+替换占位符 {template_id} 为默认值: 1
+处理后的端点: /v1/events/123/users/456/groups/789/templates/1
+```
+
+这些日志可以帮助您诊断变量替换问题，特别是当您遇到未替换的占位符或替换不符合预期时。
 
 ## 常见问题解决
 

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/gaoyong06/api-tester/internal/config/yaml"
 )
 
 // Config 保存测试工具的配置
@@ -27,6 +29,8 @@ type Config struct {
 	PathParams map[string]string
 	// 请求体模板映射
 	RequestBodies map[string]interface{}
+	// YAML 配置文件对象，包含测试场景定义
+	YamlConfig *yaml.Config
 }
 
 // NewConfig 创建新的配置

@@ -5,8 +5,10 @@ import (
 	"time"
 
 	"github.com/gaoyong06/api-tester/internal/config"
+	"github.com/gaoyong06/api-tester/internal/config/yaml"
 	"github.com/gaoyong06/api-tester/internal/parser"
 	"github.com/gaoyong06/api-tester/internal/reporter"
+	"github.com/gaoyong06/api-tester/internal/scenario"
 	"github.com/gaoyong06/api-tester/internal/types"
 	"github.com/gaoyong06/api-tester/internal/validator"
 	"github.com/gaoyong06/api-tester/pkg/client"
@@ -85,48 +87,75 @@ func (r *Runner) Run() (*types.TestResult, error) {
 	// 打印总端点数量
 	fmt.Printf("总端点数量: %d\n\n", len(allEndpoints))
 
-	// 运行所有端点测试
-	for i, endpoint := range allEndpoints {
-		fmt.Printf("[%d/%d] 测试 %s %s... ", i+1, len(allEndpoints), endpoint.Method, endpoint.Path)
-
-		// 提取路径参数和查询参数
-		pathParams := client.ExtractPathParams(endpoint)
-		// 使用配置中的路径参数覆盖默认值
-		for name, value := range r.config.PathParams {
-			pathParams[name] = value
-		}
-		queryParams := client.ExtractQueryParams(endpoint)
-
-		// 发送请求
-		response, err := r.client.SendRequest(endpoint, pathParams, queryParams)
-		if err != nil {
-			fmt.Printf("发送请求出错: %v\n", err)
-			continue
-		}
-
-		// 验证响应
-		validationResults := validator.ValidateResponse(endpoint, response)
-
-		// 保存测试结果
-		r.results = append(r.results, &types.EndpointTestResult{
-			Endpoint:   endpoint,
-			Validation: validationResults,
-			TestTime:   time.Now(),
-		})
-
-		// 打印测试结果
-		if validationResults.Passed {
-			fmt.Printf("通过 (%d ms)\n", validationResults.ResponseTime)
-		} else {
-			fmt.Printf("失败: %s\n", validationResults.FailureReason)
-		}
-	}
-
-	// 创建一个合并的 API 定义用于报告生成
+	// 创建一个合并的 API 定义用于场景管理器
 	mergedApiDef := &parser.APIDefinition{
 		Title:     "合并的 API 定义",
 		Version:   "1.0",
 		Endpoints: allEndpoints,
+	}
+
+	// 检查是否有测试场景定义
+	if r.config.YamlConfig != nil && len(r.config.YamlConfig.Scenarios) > 0 {
+		// 使用场景管理器运行测试场景
+		fmt.Printf("检测到 %d 个测试场景，使用场景模式运行测试\n\n", len(r.config.YamlConfig.Scenarios))
+		
+		// 将 []yaml.Scenario 转换为 []*yaml.Scenario
+		scenarios := make([]*yaml.Scenario, 0, len(r.config.YamlConfig.Scenarios))
+		for i := range r.config.YamlConfig.Scenarios {
+			scenarios = append(scenarios, &r.config.YamlConfig.Scenarios[i])
+		}
+		
+		// 创建场景管理器，传递配置对象
+		scenarioManager := scenario.NewManager(scenarios, mergedApiDef, r.client, r.config.YamlConfig)
+		
+		// 运行所有场景
+		scenarioResults, err := scenarioManager.RunAllScenarios()
+		if err != nil {
+			return nil, fmt.Errorf("运行测试场景失败: %v", err)
+		}
+		
+		// 保存测试结果
+		r.results = append(r.results, scenarioResults...)
+	} else {
+		// 如果没有定义测试场景，则运行所有端点测试（兼容旧版本）
+		fmt.Printf("未检测到测试场景，使用端点模式运行测试\n\n")
+		
+		// 运行所有端点测试
+		for i, endpoint := range allEndpoints {
+			fmt.Printf("[%d/%d] 测试 %s %s... ", i+1, len(allEndpoints), endpoint.Method, endpoint.Path)
+
+			// 提取路径参数和查询参数
+			pathParams := client.ExtractPathParams(endpoint)
+			// 使用配置中的路径参数覆盖默认值
+			for name, value := range r.config.PathParams {
+				pathParams[name] = value
+			}
+			queryParams := client.ExtractQueryParams(endpoint)
+
+			// 发送请求
+			response, err := r.client.SendRequest(endpoint, pathParams, queryParams)
+			if err != nil {
+				fmt.Printf("发送请求出错: %v\n", err)
+				continue
+			}
+
+			// 验证响应
+			validationResults := validator.ValidateResponse(endpoint, response)
+
+			// 保存测试结果
+			r.results = append(r.results, &types.EndpointTestResult{
+				Endpoint:   endpoint,
+				Validation: validationResults,
+				TestTime:   time.Now(),
+			})
+
+			// 打印测试结果
+			if validationResults.Passed {
+				fmt.Printf("通过 (%d ms)\n", validationResults.ResponseTime)
+			} else {
+				fmt.Printf("失败: %s\n", validationResults.FailureReason)
+			}
+		}
 	}
 
 	// 生成测试报告
