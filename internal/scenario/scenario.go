@@ -43,12 +43,18 @@ func NewManager(scenarios []*yaml.Scenario, apiDef *parser.APIDefinition, client
 
 	// 如果配置中有默认值，加载到上下文变量中
 	if config != nil && len(config.DefaultValues) > 0 {
-		// 将默认值添加到 default_values 变量中
+		// 将默认值直接添加到上下文变量中
+		for k, v := range config.DefaultValues {
+			variables[k] = v
+		}
+		
+		// 同时保留在 default_values 中，以便向后兼容
 		defaultValuesMap := make(map[string]interface{})
 		for k, v := range config.DefaultValues {
 			defaultValuesMap[k] = v
 		}
 		variables["default_values"] = defaultValuesMap
+		
 		fmt.Printf("从配置中加载了 %d 个默认值\n", len(config.DefaultValues))
 	}
 
@@ -394,20 +400,26 @@ func (m *Manager) replaceVariables(input string) string {
 	re := regexp.MustCompile(`{{\s*\.([a-zA-Z0-9_]+)\s*}}`)
 	matches := re.FindAllStringSubmatch(result, -1)
 
+	fmt.Printf("处理请求体中的变量，共找到 %d 个变量\n", len(matches))
+
 	for _, match := range matches {
 		if len(match) > 1 {
 			placeholder := match[0] // {{.varName}}
 			varName := match[1]     // varName
 
-			// 检查上下文变量
+			fmt.Printf("  处理请求体中的变量: %s (占位符: %s)\n", varName, placeholder)
+
+			// 1. 检查上下文变量 - 精确匹配
 			if value, exists := m.Context.Variables[varName]; exists {
 				strValue := fmt.Sprintf("%v", value)
 				result = strings.ReplaceAll(result, placeholder, strValue)
-				fmt.Printf("  替换Go模板变量 %s 为上下文变量值: %s\n", placeholder, strValue)
+				fmt.Printf("  [优先级1] 替换请求体中的变量 %s 为上下文变量值: %s\n", placeholder, strValue)
 				continue
+			} else {
+				fmt.Printf("  [优先级1] 上下文变量中未找到精确匹配: %s\n", varName)
 			}
 
-			// 尝试相似名称
+			// 2. 尝试相似名称 - 驼峰和下划线转换
 			alternativeNames := []string{
 				toCamelCase(varName),
 				toSnakeCase(varName),
@@ -419,45 +431,49 @@ func (m *Manager) replaceVariables(input string) string {
 					continue // 跳过相同的名称
 				}
 
+				fmt.Printf("  [优先级2] 尝试相似名称: %s\n", altName)
+
 				if value, exists := m.Context.Variables[altName]; exists {
 					strValue := fmt.Sprintf("%v", value)
 					result = strings.ReplaceAll(result, placeholder, strValue)
-					fmt.Printf("  替换Go模板变量 %s 为相似名称变量 %s 的值: %s\n", placeholder, altName, strValue)
+					fmt.Printf("  [优先级2] 替换请求体中的变量 %s 为相似名称变量 %s 的值: %s\n", placeholder, altName, strValue)
 					replaced = true
 					break
 				}
 			}
 
-			// 使用默认值
+			// 3. 尝试全局变量中的键名 - 不区分大小写
 			if !replaced {
-				// 对于常见的参数名称，使用默认值
-				defaultValues := map[string]string{
-					"id":              "1",
-					"event_id":        "87",
-					"eventId":         "87",
-					"table_id":        "1",
-					"tableId":         "1",
-					"guest_id":        "1",
-					"guestId":         "1",
-					"seat_id":         "1",
-					"seatId":          "1",
-					"task_id":         "1",
-					"taskId":          "1",
-					"group_id":        "1",
-					"groupId":         "1",
-					"relationship_id": "1",
-					"relationshipId":  "1",
-					"template_id":     "1",
-					"templateId":      "1",
-					"token":           "test-token",
+				varNameLower := strings.ToLower(varName)
+				for k, v := range m.Context.Variables {
+					if strings.ToLower(k) == varNameLower {
+						strValue := fmt.Sprintf("%v", v)
+						result = strings.ReplaceAll(result, placeholder, strValue)
+						fmt.Printf("  [优先级3] 替换请求体中的变量 %s 为不区分大小写的变量 %s 的值: %s\n", placeholder, k, strValue)
+						replaced = true
+						break
+					}
 				}
+			}
 
+			// 4. 使用默认值
+			if !replaced {
+				// 从配置中获取默认值
+				defaultValues := m.getDefaultValues()
+
+				// 对于常见的参数名称，使用默认值
+				defaultFound := false
 				for defName, defValue := range defaultValues {
 					if varName == defName {
 						result = strings.ReplaceAll(result, placeholder, defValue)
-						fmt.Printf("  替换Go模板变量 %s 为默认值: %s\n", placeholder, defValue)
+						fmt.Printf("  [优先级4] 替换请求体中的变量 %s 为默认值: %s\n", placeholder, defValue)
+						defaultFound = true
 						break
 					}
+				}
+
+				if !defaultFound {
+					fmt.Printf("  警告: 无法替换变量 %s，将保持原样\n", placeholder)
 				}
 			}
 		}
@@ -503,27 +519,8 @@ func (m *Manager) replaceVariables(input string) string {
 
 			// 使用默认值
 			if !replaced {
-				// 对于常见的参数名称，使用默认值
-				defaultValues := map[string]string{
-					"id":              "1",
-					"event_id":        "87",
-					"eventId":         "87",
-					"table_id":        "1",
-					"tableId":         "1",
-					"guest_id":        "1",
-					"guestId":         "1",
-					"seat_id":         "1",
-					"seatId":          "1",
-					"task_id":         "1",
-					"taskId":          "1",
-					"group_id":        "1",
-					"groupId":         "1",
-					"relationship_id": "1",
-					"relationshipId":  "1",
-					"template_id":     "1",
-					"templateId":      "1",
-					"token":           "test-token",
-				}
+				// 从配置中获取默认值
+				defaultValues := m.getDefaultValues()
 
 				for defName, defValue := range defaultValues {
 					if varName == defName {
@@ -701,20 +698,26 @@ func (m *Manager) replaceGoTemplateVars(input string) string {
 
 	result := input
 
+	fmt.Printf("开始处理Go模板变量，共找到 %d 个变量\n", len(matches))
+
 	for _, match := range matches {
 		if len(match) > 1 {
 			placeholder := match[0] // {{.varName}}
 			varName := match[1]     // varName
 
-			// 检查上下文变量
+			fmt.Printf("  处理变量: %s (占位符: %s)\n", varName, placeholder)
+
+			// 1. 检查上下文变量 - 精确匹配
 			if value, exists := m.Context.Variables[varName]; exists {
 				strValue := fmt.Sprintf("%v", value)
 				result = strings.ReplaceAll(result, placeholder, strValue)
-				fmt.Printf("  替换Go模板变量 %s 为上下文变量值: %s\n", placeholder, strValue)
+				fmt.Printf("  [优先级1] 替换Go模板变量 %s 为上下文变量值: %s\n", placeholder, strValue)
 				continue
+			} else {
+				fmt.Printf("  [优先级1] 上下文变量中未找到精确匹配: %s\n", varName)
 			}
 
-			// 尝试相似名称
+			// 2. 尝试相似名称 - 驼峰和下划线转换
 			alternativeNames := []string{
 				toCamelCase(varName),
 				toSnakeCase(varName),
@@ -726,28 +729,49 @@ func (m *Manager) replaceGoTemplateVars(input string) string {
 					continue // 跳过相同的名称
 				}
 
+				fmt.Printf("  [优先级2] 尝试相似名称: %s\n", altName)
+
 				if value, exists := m.Context.Variables[altName]; exists {
 					strValue := fmt.Sprintf("%v", value)
 					result = strings.ReplaceAll(result, placeholder, strValue)
-					fmt.Printf("  替换Go模板变量 %s 为相似名称变量 %s 的值: %s\n", placeholder, altName, strValue)
+					fmt.Printf("  [优先级2] 替换Go模板变量 %s 为相似名称变量 %s 的值: %s\n", placeholder, altName, strValue)
 					replaced = true
 					break
 				}
 			}
 
-			// 使用默认值
+			// 3. 尝试全局变量中的键名 - 不区分大小写
+			if !replaced {
+				varNameLower := strings.ToLower(varName)
+				for k, v := range m.Context.Variables {
+					if strings.ToLower(k) == varNameLower {
+						strValue := fmt.Sprintf("%v", v)
+						result = strings.ReplaceAll(result, placeholder, strValue)
+						fmt.Printf("  [优先级3] 替换Go模板变量 %s 为不区分大小写的变量 %s 的值: %s\n", placeholder, k, strValue)
+						replaced = true
+						break
+					}
+				}
+			}
+
+			// 4. 使用默认值
 			if !replaced {
 				// 从配置中获取默认值
 				defaultValues := m.getDefaultValues()
 
 				// 使用配置中的默认值，不添加特定业务领域的硬编码映射
-
+				defaultFound := false
 				for defName, defValue := range defaultValues {
 					if varName == defName {
 						result = strings.ReplaceAll(result, placeholder, defValue)
-						fmt.Printf("  替换Go模板变量 %s 为默认值: %s\n", placeholder, defValue)
+						fmt.Printf("  [优先级4] 替换Go模板变量 %s 为默认值: %s\n", placeholder, defValue)
+						defaultFound = true
 						break
 					}
+				}
+
+				if !defaultFound {
+					fmt.Printf("  警告: 无法替换变量 %s，将保持原样\n", placeholder)
 				}
 			}
 		}
