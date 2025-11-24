@@ -1,0 +1,286 @@
+# 微服务 API 测试配置
+# 测试 Passport、Payment 和 Subscription 三个服务
+
+# API 基础配置
+base_url: http://localhost
+timeout: 30
+verbose: true
+
+# 输出目录
+output_dir: ./test-reports
+
+# 全局变量定义
+variables:
+  # 测试用户信息
+  test_phone: "13800138000"
+  test_email: "test@example.com"
+  test_password: "password123"
+  test_nickname: "测试用户"
+  
+  # 支付信息
+  test_amount: 9.99
+  test_currency: "CNY"
+  
+  # 订阅套餐
+  plan_monthly: "plan_monthly"
+  plan_yearly: "plan_yearly"
+
+# 测试场景
+scenarios:
+  # ========== Passport Service 测试 ==========
+  - name: Passport Service - 用户注册登录流程
+    description: 测试用户注册、登录和获取用户信息功能
+    base_url: http://localhost:9000
+    steps:
+      - name: 注册新用户
+        endpoint: /v1/passport/register
+        method: POST
+        request_body:
+          contact_type: "phone"
+          contact: "{{.test_phone}}"
+          password: "{{.test_password}}"
+          nickname: "{{.test_nickname}}"
+        assert:
+          status: 201
+          body:
+            $.uid: "!null"
+            $.access_token: "!null"
+        extract:
+          user_id: $.uid
+          access_token: $.access_token
+
+      - name: 用户登录
+        endpoint: /v1/passport/login
+        method: POST
+        dependencies: [注册新用户]
+        request_body:
+          contact_type: "phone"
+          contact: "{{.test_phone}}"
+          password: "{{.test_password}}"
+        assert:
+          status: 200
+          body:
+            $.access_token: "!null"
+            $.token_type: "Bearer"
+        extract:
+          login_token: $.access_token
+
+      - name: 获取用户信息
+        endpoint: /v1/passport/user/{{.user_id}}
+        method: GET
+        dependencies: [用户登录]
+        headers:
+          Authorization: "Bearer {{.login_token}}"
+        path_params:
+          id: "{{.user_id}}"
+        assert:
+          status: 200
+          body:
+            $.uid: "{{.user_id}}"
+            $.nickname: "{{.test_nickname}}"
+
+  # ========== Payment Service 测试 ==========
+  - name: Payment Service - 支付流程测试
+    description: 测试创建支付、查询支付和退款功能
+    base_url: http://localhost:9001
+    steps:
+      - name: 创建支付订单
+        endpoint: /v1/payment/create
+        method: POST
+        request_body:
+          order_id: "TEST_{{uuid}}"
+          user_id: 1001
+          amount: "{{.test_amount}}"
+          currency: "{{.test_currency}}"
+          method: "alipay"
+          subject: "测试订单"
+          return_url: "http://example.com/return"
+          notify_url: "http://example.com/notify"
+          client_ip: "127.0.0.1"
+        assert:
+          status: 200
+          body:
+            $.payment_id: "!null"
+            $.status: "pending"
+        extract:
+          payment_id: $.payment_id
+          order_id: $.order_id
+
+      - name: 查询支付状态
+        endpoint: /v1/payment/{{.payment_id}}
+        method: GET
+        dependencies: [创建支付订单]
+        path_params:
+          payment_id: "{{.payment_id}}"
+        assert:
+          status: 200
+          body:
+            $.payment_id: "{{.payment_id}}"
+            $.order_id: "{{.order_id}}"
+            $.amount: "{{.test_amount}}"
+
+      - name: 模拟支付成功回调
+        endpoint: /v1/payment/notify/mock
+        method: POST
+        dependencies: [查询支付状态]
+        request_body:
+          payment_id: "{{.payment_id}}"
+          status: "success"
+        assert:
+          status: 200
+
+      - name: 验证支付成功
+        endpoint: /v1/payment/{{.payment_id}}
+        method: GET
+        dependencies: [模拟支付成功回调]
+        path_params:
+          payment_id: "{{.payment_id}}"
+        assert:
+          status: 200
+          body:
+            $.status: "success"
+
+  # ========== Subscription Service 测试 ==========
+  - name: Subscription Service - 订阅管理测试
+    description: 测试套餐查询、订阅购买和订阅查询功能
+    base_url: http://localhost:9002
+    steps:
+      - name: 获取套餐列表
+        endpoint: /v1/subscription/plans
+        method: GET
+        assert:
+          status: 200
+          body:
+            $.plans: "!null"
+            $.plans[0].id: "!null"
+            $.plans[0].name: "!null"
+            $.plans[0].price: "!null"
+        extract:
+          first_plan_id: $.plans[0].id
+          first_plan_price: $.plans[0].price
+
+      - name: 查询用户订阅状态（未订阅）
+        endpoint: /v1/subscription/my/1001
+        method: GET
+        path_params:
+          uid: "1001"
+        assert:
+          status: 200
+          body:
+            $.is_active: false
+
+      - name: 创建订阅订单
+        endpoint: /v1/subscription/order
+        method: POST
+        dependencies: [获取套餐列表]
+        request_body:
+          uid: 1001
+          plan_id: "{{.first_plan_id}}"
+          payment_method: "alipay"
+        assert:
+          status: 200
+          body:
+            $.order_id: "!null"
+            $.payment_id: "!null"
+        extract:
+          subscription_order_id: $.order_id
+          subscription_payment_id: $.payment_id
+
+      - name: 模拟支付成功
+        endpoint: /v1/subscription/payment/success
+        method: POST
+        dependencies: [创建订阅订单]
+        request_body:
+          order_id: "{{.subscription_order_id}}"
+          payment_id: "{{.subscription_payment_id}}"
+          amount: "{{.first_plan_price}}"
+        assert:
+          status: 200
+          body:
+            $.success: true
+
+      - name: 验证订阅已激活
+        endpoint: /v1/subscription/my/1001
+        method: GET
+        dependencies: [模拟支付成功]
+        path_params:
+          uid: "1001"
+        assert:
+          status: 200
+          body:
+            $.is_active: true
+            $.plan_id: "{{.first_plan_id}}"
+
+  # ========== 集成测试：完整用户流程 ==========
+  - name: 完整用户流程测试
+    description: 测试从注册到订阅的完整流程
+    steps:
+      # 1. 注册用户
+      - name: 注册新用户
+        endpoint: /v1/passport/register
+        method: POST
+        base_url: http://localhost:9000
+        request_body:
+          contact_type: "email"
+          contact: "integration_test_{{uuid}}@example.com"
+          password: "test123456"
+          nickname: "集成测试用户"
+        assert:
+          status: 201
+        extract:
+          int_user_id: $.uid
+          int_token: $.access_token
+
+      # 2. 查看套餐
+      - name: 查看订阅套餐
+        endpoint: /v1/subscription/plans
+        method: GET
+        base_url: http://localhost:9002
+        dependencies: [注册新用户]
+        assert:
+          status: 200
+        extract:
+          selected_plan: $.plans[0].id
+          selected_price: $.plans[0].price
+
+      # 3. 创建订阅
+      - name: 购买订阅
+        endpoint: /v1/subscription/order
+        method: POST
+        base_url: http://localhost:9002
+        dependencies: [查看订阅套餐]
+        request_body:
+          uid: "{{.int_user_id}}"
+          plan_id: "{{.selected_plan}}"
+          payment_method: "wechatpay"
+        assert:
+          status: 200
+        extract:
+          final_order_id: $.order_id
+          final_payment_id: $.payment_id
+
+      # 4. 完成支付
+      - name: 完成支付
+        endpoint: /v1/subscription/payment/success
+        method: POST
+        base_url: http://localhost:9002
+        dependencies: [购买订阅]
+        request_body:
+          order_id: "{{.final_order_id}}"
+          payment_id: "{{.final_payment_id}}"
+          amount: "{{.selected_price}}"
+        assert:
+          status: 200
+
+      # 5. 验证会员状态
+      - name: 验证会员状态
+        endpoint: /v1/subscription/my/{{.int_user_id}}
+        method: GET
+        base_url: http://localhost:9002
+        dependencies: [完成支付]
+        path_params:
+          uid: "{{.int_user_id}}"
+        assert:
+          status: 200
+          body:
+            $.is_active: true
