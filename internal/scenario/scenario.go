@@ -47,15 +47,25 @@ func NewManager(scenarios []*yaml.Scenario, apiDef *parser.APIDefinition, client
 		for k, v := range config.DefaultValues {
 			variables[k] = v
 		}
-		
+
 		// 同时保留在 default_values 中，以便向后兼容
 		defaultValuesMap := make(map[string]interface{})
 		for k, v := range config.DefaultValues {
 			defaultValuesMap[k] = v
 		}
 		variables["default_values"] = defaultValuesMap
-		
+
 		fmt.Printf("从配置中加载了 %d 个默认值\n", len(config.DefaultValues))
+	}
+
+	// 如果配置中有全局变量，加载到上下文变量中
+	if config != nil && len(config.Variables) > 0 {
+		// 将全局变量添加到上下文变量中
+		for k, v := range config.Variables {
+			variables[k] = v
+		}
+
+		fmt.Printf("从配置中加载了 %d 个全局变量\n", len(config.Variables))
 	}
 
 	return &Manager{
@@ -158,22 +168,20 @@ func (m *Manager) runScenarioSteps(scenario *yaml.Scenario) ([]*types.EndpointTe
 			m.extractVariables(step.Extract, response.Body)
 		}
 
+		// 验证响应
+		passed, failureReason := m.validateResponse(&step, response)
+
 		// 创建测试结果
 		result := &types.EndpointTestResult{
 			Endpoint: endpoint,
 			Validation: &types.ValidationResult{
-				Passed:        response.StatusCode >= 200 && response.StatusCode < 300,
+				Passed:        passed,
 				ActualStatus:  response.StatusCode,
 				ResponseTime:  response.ResponseTime,
 				ResponseBody:  string(response.Body),
-				FailureReason: "",
+				FailureReason: failureReason,
 			},
 			TestTime: time.Now(),
-		}
-
-		// 如果请求失败，设置失败原因
-		if !result.Validation.Passed {
-			result.Validation.FailureReason = fmt.Sprintf("状态码 %d 不在成功范围内", response.StatusCode)
 		}
 
 		// 保存结果
@@ -192,6 +200,98 @@ func (m *Manager) runScenarioSteps(scenario *yaml.Scenario) ([]*types.EndpointTe
 	}
 
 	return results, nil
+}
+
+// validateResponse 验证响应是否符合断言
+func (m *Manager) validateResponse(step *yaml.Step, response *client.Response) (bool, string) {
+	// 如果没有断言配置，默认只检查 2xx 状态码
+	if step.Assert == nil || len(step.Assert) == 0 {
+		if response.StatusCode >= 200 && response.StatusCode < 300 {
+			return true, ""
+		}
+		return false, fmt.Sprintf("状态码 %d 不在成功范围内 (2xx)", response.StatusCode)
+	}
+
+	// 验证状态码
+	if expectedStatus, ok := step.Assert["status"]; ok {
+		if !m.validateStatusCode(response.StatusCode, expectedStatus) {
+			return false, fmt.Sprintf("期望状态码 %v，实际状态码 %d", expectedStatus, response.StatusCode)
+		}
+	}
+
+	// 验证响应体
+	if expectedBody, ok := step.Assert["body"]; ok {
+		if bodyMap, ok := expectedBody.(map[string]interface{}); ok {
+			for jsonPath, expectedValue := range bodyMap {
+				if !m.validateJSONPath(response.Body, jsonPath, expectedValue) {
+					return false, fmt.Sprintf("响应体验证失败: %s 不匹配期望值 %v", jsonPath, expectedValue)
+				}
+			}
+		}
+	}
+
+	return true, ""
+}
+
+// validateStatusCode 验证状态码是否匹配期望值
+func (m *Manager) validateStatusCode(actualStatus int, expected interface{}) bool {
+	switch v := expected.(type) {
+	case int:
+		return actualStatus == v
+	case float64:
+		// YAML 解析数字时可能是 float64
+		return actualStatus == int(v)
+	case string:
+		// 支持字符串形式的数字
+		expectedInt := 0
+		fmt.Sscanf(v, "%d", &expectedInt)
+		return actualStatus == expectedInt
+	case []interface{}:
+		// 支持数组形式，表示多个可接受的状态码
+		for _, item := range v {
+			if m.validateStatusCode(actualStatus, item) {
+				return true
+			}
+		}
+		return false
+	default:
+		return false
+	}
+}
+
+// validateJSONPath 验证 JSON 路径的值是否匹配期望值
+func (m *Manager) validateJSONPath(body []byte, jsonPath string, expectedValue interface{}) bool {
+	// 去除 $. 前缀（如果有）
+	jsonPath = strings.TrimPrefix(jsonPath, "$.")
+
+	// 使用 gjson 提取值
+	result := gjson.GetBytes(body, jsonPath)
+	if !result.Exists() {
+		return false
+	}
+
+	// 比较值
+	switch expected := expectedValue.(type) {
+	case string:
+		if expected == "!null" {
+			// 特殊值：检查不为 null
+			return result.Type != gjson.Null
+		}
+		// 替换变量（支持 {{.var}} 格式）
+		expected = m.replaceGoTemplateVars(expected)
+		expected = m.replaceVariables(expected)
+		return result.String() == expected
+	case int:
+		return result.Int() == int64(expected)
+	case float64:
+		return result.Float() == expected
+	case bool:
+		return result.Bool() == expected
+	default:
+		// 对于复杂类型，转换为 JSON 字符串比较
+		expectedJSON, _ := json.Marshal(expected)
+		return result.Raw == string(expectedJSON)
+	}
 }
 
 // checkDependencies 检查依赖是否已满足

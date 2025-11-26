@@ -18,6 +18,8 @@ type Config struct {
 	Verbose bool `yaml:"verbose"`
 	// 默认值配置
 	DefaultValues map[string]string `yaml:"default_values"`
+	// 全局变量
+	Variables map[string]interface{} `yaml:"variables"`
 
 	// 请求配置
 	Request struct {
