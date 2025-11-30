@@ -95,7 +95,8 @@ type Step struct {
 	// HTTP方法
 	Method string `yaml:"method"`
 	// 请求体 - 支持字符串或对象格式
-	RequestBody interface{} `yaml:"request_body"`
+	// 注意：YAML 配置中使用 "body" 字段名，但代码中使用 RequestBody
+	RequestBody interface{} `yaml:"body"`
 	// 路径参数
 	PathParams map[string]string `yaml:"path_params"`
 	// 查询参数

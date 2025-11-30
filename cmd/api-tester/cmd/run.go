@@ -36,6 +36,8 @@ var runCmd = &cobra.Command{
 		// 检查是否提供了配置文件
 		var cfg *config.Config
 		var err error
+		outputFlag := cmd.Flags().Lookup("output")
+		outputFlagChanged := outputFlag != nil && outputFlag.Changed
 
 		if cfgFile != "" {
 			// 从配置文件加载配置
@@ -74,7 +76,7 @@ var runCmd = &cobra.Command{
 				// 为了简化，我们这里使用空的 map
 				cfg.Headers = headerMap
 			}
-			if outputDir != "" {
+			if outputFlagChanged && outputDir != "" {
 				cfg.OutputDir = outputDir
 			}
 			if timeout != 30 {
@@ -95,6 +97,10 @@ var runCmd = &cobra.Command{
 				cfg.RequestBodies = requestBodiesMap
 			}
 		} else {
+			effectiveOutputDir := outputDir
+			if !outputFlagChanged || effectiveOutputDir == "" {
+				effectiveOutputDir = "./reports"
+			}
 			// 验证必填参数
 			if specFile == "" || baseURL == "" {
 				cmd.Help()
@@ -103,10 +109,14 @@ var runCmd = &cobra.Command{
 			}
 
 			// 从命令行参数创建配置
-			cfg, err = config.NewConfig(specFile, baseURL, headers, outputDir, verbose, timeout, pathParams, requestBodies)
+			cfg, err = config.NewConfig(specFile, baseURL, headers, effectiveOutputDir, verbose, timeout, pathParams, requestBodies)
 			if err != nil {
 				log.Fatalf("配置错误: %v", err)
 			}
+		}
+
+		if cfg.OutputDir == "" {
+			cfg.OutputDir = "./reports"
 		}
 
 		// 创建并运行测试

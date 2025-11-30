@@ -280,6 +280,40 @@ func (m *Manager) validateJSONPath(body []byte, jsonPath string, expectedValue i
 		// 替换变量（支持 {{.var}} 格式）
 		expected = m.replaceGoTemplateVars(expected)
 		expected = m.replaceVariables(expected)
+
+		// 支持比较操作符：>0, >=0, <100, <=100 等
+		if strings.HasPrefix(expected, ">=") {
+			// >= 比较
+			var threshold float64
+			if _, err := fmt.Sscanf(expected, ">=%f", &threshold); err == nil {
+				// 尝试解析为数值（支持字符串形式的数字）
+				val := result.Float()
+				return val >= threshold
+			}
+		} else if strings.HasPrefix(expected, "<=") {
+			// <= 比较
+			var threshold float64
+			if _, err := fmt.Sscanf(expected, "<=%f", &threshold); err == nil {
+				val := result.Float()
+				return val <= threshold
+			}
+		} else if strings.HasPrefix(expected, ">") {
+			// > 比较
+			var threshold float64
+			if _, err := fmt.Sscanf(expected, ">%f", &threshold); err == nil {
+				val := result.Float()
+				return val > threshold
+			}
+		} else if strings.HasPrefix(expected, "<") {
+			// < 比较
+			var threshold float64
+			if _, err := fmt.Sscanf(expected, "<%f", &threshold); err == nil {
+				val := result.Float()
+				return val < threshold
+			}
+		}
+
+		// 默认字符串相等比较
 		return result.String() == expected
 	case int:
 		return result.Int() == int64(expected)
@@ -328,6 +362,10 @@ func (m *Manager) processVariables(step *yaml.Step) (map[string]string, map[stri
 	queryParams := make(map[string]string)
 	// 处理请求体
 	var requestBodyStr string
+
+	// 调试：检查 RequestBody 是否被正确读取
+	fmt.Printf("DEBUG processVariables: step.RequestBody type: %T, value: %v, is nil: %v\n",
+		step.RequestBody, step.RequestBody, step.RequestBody == nil)
 
 	// 处理路径参数
 	if step.PathParams != nil {
@@ -461,6 +499,7 @@ func (m *Manager) processVariables(step *yaml.Step) (map[string]string, map[stri
 	}
 
 	// 处理不同类型的 RequestBody
+	fmt.Printf("DEBUG: step.RequestBody type: %T, value: %v\n", step.RequestBody, step.RequestBody)
 	switch body := step.RequestBody.(type) {
 	case string:
 		// 如果是字符串，直接替换变量
@@ -473,7 +512,10 @@ func (m *Manager) processVariables(step *yaml.Step) (map[string]string, map[stri
 		if err != nil {
 			fmt.Printf("警告: 无法将请求体转换为 JSON: %v\n", err)
 		} else {
-			requestBodyStr = m.replaceVariables(string(jsonBytes))
+			jsonStr := string(jsonBytes)
+			fmt.Printf("请求体 JSON 字符串（变量替换前）: %s\n", jsonStr)
+			requestBodyStr = m.replaceVariables(jsonStr)
+			fmt.Printf("请求体 JSON 字符串（变量替换后）: %s\n", requestBodyStr)
 		}
 	case nil:
 		// 如果为空，不需要处理

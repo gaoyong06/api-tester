@@ -43,6 +43,6 @@ func init() {
 	// 全局标志
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "配置文件路径 (默认为 ./config.yaml)")
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "启用详细输出")
-	rootCmd.PersistentFlags().StringVar(&outputDir, "output", "./reports", "输出目录路径")
+	rootCmd.PersistentFlags().StringVar(&outputDir, "output", "", "输出目录路径（默认 ./reports，或配置文件中的 output_dir）")
 	rootCmd.PersistentFlags().StringVar(&reportType, "report-type", "html", "报告类型 (html, json, xml, junit)")
 }
