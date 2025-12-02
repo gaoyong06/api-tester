@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -215,7 +216,9 @@ func (m *Manager) validateResponse(step *yaml.Step, response *client.Response) (
 	// 验证状态码
 	if expectedStatus, ok := step.Assert["status"]; ok {
 		if !m.validateStatusCode(response.StatusCode, expectedStatus) {
-			return false, fmt.Sprintf("期望状态码 %v，实际状态码 %d", expectedStatus, response.StatusCode)
+			// 格式化期望状态码，使其更清晰
+			expectedStatusStr := m.formatExpectedStatus(expectedStatus)
+			return false, fmt.Sprintf("期望状态码 %s，实际状态码 %d", expectedStatusStr, response.StatusCode)
 		}
 	}
 
@@ -223,8 +226,9 @@ func (m *Manager) validateResponse(step *yaml.Step, response *client.Response) (
 	if expectedBody, ok := step.Assert["body"]; ok {
 		if bodyMap, ok := expectedBody.(map[string]interface{}); ok {
 			for jsonPath, expectedValue := range bodyMap {
-				if !m.validateJSONPath(response.Body, jsonPath, expectedValue) {
-					return false, fmt.Sprintf("响应体验证失败: %s 不匹配期望值 %v", jsonPath, expectedValue)
+				passed, detailErr := m.validateJSONPath(response.Body, jsonPath, expectedValue)
+				if !passed {
+					return false, detailErr
 				}
 			}
 		}
@@ -233,19 +237,52 @@ func (m *Manager) validateResponse(step *yaml.Step, response *client.Response) (
 	return true, ""
 }
 
+// formatExpectedStatus 格式化期望状态码，使其更清晰
+func (m *Manager) formatExpectedStatus(expected interface{}) string {
+	switch v := expected.(type) {
+	case int:
+		return fmt.Sprintf("%d", v)
+	case float64:
+		return fmt.Sprintf("%.0f", v)
+	case string:
+		return v
+	case []interface{}:
+		// 格式化数组为 [400, 404, 500] 格式
+		parts := make([]string, 0, len(v))
+		for _, item := range v {
+			switch val := item.(type) {
+			case int:
+				parts = append(parts, fmt.Sprintf("%d", val))
+			case float64:
+				parts = append(parts, fmt.Sprintf("%.0f", val))
+			case string:
+				parts = append(parts, val)
+			default:
+				parts = append(parts, fmt.Sprintf("%v", val))
+			}
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	default:
+		return fmt.Sprintf("%v", expected)
+	}
+}
+
 // validateStatusCode 验证状态码是否匹配期望值
 func (m *Manager) validateStatusCode(actualStatus int, expected interface{}) bool {
 	switch v := expected.(type) {
 	case int:
 		return actualStatus == v
 	case float64:
-		// YAML 解析数字时可能是 float64
+		// YAML 解析数字时可能是 float64，需要转换为 int
+		// 注意：直接比较 int(v) 和 actualStatus，避免浮点数精度问题
 		return actualStatus == int(v)
 	case string:
 		// 支持字符串形式的数字
 		expectedInt := 0
-		fmt.Sscanf(v, "%d", &expectedInt)
-		return actualStatus == expectedInt
+		if _, err := fmt.Sscanf(v, "%d", &expectedInt); err == nil {
+			return actualStatus == expectedInt
+		}
+		return false
 	case []interface{}:
 		// 支持数组形式，表示多个可接受的状态码
 		for _, item := range v {
@@ -260,14 +297,34 @@ func (m *Manager) validateStatusCode(actualStatus int, expected interface{}) boo
 }
 
 // validateJSONPath 验证 JSON 路径的值是否匹配期望值
-func (m *Manager) validateJSONPath(body []byte, jsonPath string, expectedValue interface{}) bool {
+// 返回 (是否通过, 详细错误信息)
+func (m *Manager) validateJSONPath(body []byte, jsonPath string, expectedValue interface{}) (bool, string) {
 	// 去除 $. 前缀（如果有）
+	originalPath := jsonPath
 	jsonPath = strings.TrimPrefix(jsonPath, "$.")
+
+	// 替换 JSON 路径中的变量（支持 {{.var}} 格式）
+	jsonPath = m.replaceGoTemplateVars(jsonPath)
+	jsonPath = m.replaceVariables(jsonPath)
 
 	// 使用 gjson 提取值
 	result := gjson.GetBytes(body, jsonPath)
 	if !result.Exists() {
-		return false
+		// 尝试使用点号语法（grants.0.userId 而不是 grants[0].userId）
+		dotPath := regexp.MustCompile(`\[(\d+)\]`).ReplaceAllString(jsonPath, ".$1")
+		if dotPath != jsonPath {
+			result = gjson.GetBytes(body, dotPath)
+			if result.Exists() {
+				fmt.Printf("  [DEBUG] JSON路径 %s 不存在，但点号语法 %s 存在\n", jsonPath, dotPath)
+				jsonPath = dotPath
+			} else {
+				fmt.Printf("  [DEBUG] JSON路径 %s 和 %s 都不存在\n", jsonPath, dotPath)
+				return false, fmt.Sprintf("JSON路径 %s 不存在于响应中 (尝试了 %s 和 %s)", originalPath, jsonPath, dotPath)
+			}
+		} else {
+			fmt.Printf("  [DEBUG] JSON路径 %s 不存在 (原始路径: %s)\n", jsonPath, originalPath)
+			return false, fmt.Sprintf("JSON路径 %s 不存在于响应中", originalPath)
+		}
 	}
 
 	// 比较值
@@ -275,56 +332,135 @@ func (m *Manager) validateJSONPath(body []byte, jsonPath string, expectedValue i
 	case string:
 		if expected == "!null" {
 			// 特殊值：检查不为 null
-			return result.Type != gjson.Null
+			if result.Type == gjson.Null {
+				return false, fmt.Sprintf("JSON路径 %s 的值为 null，期望不为 null", originalPath)
+			}
+			return true, ""
 		}
 		// 替换变量（支持 {{.var}} 格式）
 		expected = m.replaceGoTemplateVars(expected)
 		expected = m.replaceVariables(expected)
+
+		// 获取实际值
+		actualValue := result.String()
+		actualValueDisplay := actualValue
+		if len(actualValueDisplay) > 100 {
+			actualValueDisplay = actualValueDisplay[:100] + "..."
+		}
 
 		// 支持比较操作符：>0, >=0, <100, <=100 等
 		if strings.HasPrefix(expected, ">=") {
 			// >= 比较
 			var threshold float64
 			if _, err := fmt.Sscanf(expected, ">=%f", &threshold); err == nil {
-				// 尝试解析为数值（支持字符串形式的数字）
 				val := result.Float()
-				return val >= threshold
+				if val >= threshold {
+					return true, ""
+				}
+				return false, fmt.Sprintf("JSON路径 %s: 实际值 %v 不满足 >= %v", originalPath, val, threshold)
 			}
 		} else if strings.HasPrefix(expected, "<=") {
 			// <= 比较
 			var threshold float64
 			if _, err := fmt.Sscanf(expected, "<=%f", &threshold); err == nil {
 				val := result.Float()
-				return val <= threshold
+				if val <= threshold {
+					return true, ""
+				}
+				return false, fmt.Sprintf("JSON路径 %s: 实际值 %v 不满足 <= %v", originalPath, val, threshold)
 			}
 		} else if strings.HasPrefix(expected, ">") {
 			// > 比较
 			var threshold float64
 			if _, err := fmt.Sscanf(expected, ">%f", &threshold); err == nil {
 				val := result.Float()
-				return val > threshold
+				if val > threshold {
+					return true, ""
+				}
+				return false, fmt.Sprintf("JSON路径 %s: 实际值 %v 不满足 > %v", originalPath, val, threshold)
 			}
 		} else if strings.HasPrefix(expected, "<") {
 			// < 比较
 			var threshold float64
 			if _, err := fmt.Sscanf(expected, "<%f", &threshold); err == nil {
 				val := result.Float()
-				return val < threshold
+				if val < threshold {
+					return true, ""
+				}
+				return false, fmt.Sprintf("JSON路径 %s: 实际值 %v 不满足 < %v", originalPath, val, threshold)
+			}
+		}
+
+		// 处理 bool 类型：如果期望值是字符串形式的 bool 值（"true"/"false"），尝试转换为 bool 比较
+		if result.Type == gjson.True || result.Type == gjson.False {
+			if expectedBool, err := strconv.ParseBool(expected); err == nil {
+				actualBool := result.Bool()
+				if actualBool == expectedBool {
+					return true, ""
+				}
+				return false, fmt.Sprintf("JSON路径 %s: 实际值 %v (bool) 不等于期望值 %v", originalPath, actualBool, expectedBool)
 			}
 		}
 
 		// 默认字符串相等比较
-		return result.String() == expected
+		// 处理数字类型：如果期望值是数字字符串，尝试转换为数字比较
+		if result.Type == gjson.Number {
+			if expectedInt, err := strconv.ParseInt(expected, 10, 64); err == nil {
+				actualInt := result.Int()
+				if actualInt == expectedInt {
+					return true, ""
+				}
+				return false, fmt.Sprintf("JSON路径 %s: 实际值 %d (int) 不等于期望值 %d", originalPath, actualInt, expectedInt)
+			}
+			if expectedFloat, err := strconv.ParseFloat(expected, 64); err == nil {
+				actualFloat := result.Float()
+				if actualFloat == expectedFloat {
+					return true, ""
+				}
+				return false, fmt.Sprintf("JSON路径 %s: 实际值 %v (float) 不等于期望值 %v", originalPath, actualFloat, expectedFloat)
+			}
+		}
+		// 字符串比较（去除引号）
+		actualStr := strings.Trim(result.String(), `"`)
+		expectedStr := strings.Trim(expected, `"`)
+		if actualStr == expectedStr {
+			return true, ""
+		}
+		return false, fmt.Sprintf("JSON路径 %s: 实际值 \"%s\" 不等于期望值 \"%s\"", originalPath, actualValueDisplay, expectedStr)
 	case int:
-		return result.Int() == int64(expected)
+		actualInt := result.Int()
+		if actualInt == int64(expected) {
+			return true, ""
+		}
+		return false, fmt.Sprintf("JSON路径 %s: 实际值 %d (int) 不等于期望值 %d", originalPath, actualInt, expected)
 	case float64:
-		return result.Float() == expected
+		actualFloat := result.Float()
+		if actualFloat == expected {
+			return true, ""
+		}
+		return false, fmt.Sprintf("JSON路径 %s: 实际值 %v (float) 不等于期望值 %v", originalPath, actualFloat, expected)
 	case bool:
-		return result.Bool() == expected
+		actualBool := result.Bool()
+		if actualBool == expected {
+			return true, ""
+		}
+		return false, fmt.Sprintf("JSON路径 %s: 实际值 %v (bool) 不等于期望值 %v", originalPath, actualBool, expected)
 	default:
 		// 对于复杂类型，转换为 JSON 字符串比较
 		expectedJSON, _ := json.Marshal(expected)
-		return result.Raw == string(expectedJSON)
+		actualRaw := result.Raw
+		if actualRaw == string(expectedJSON) {
+			return true, ""
+		}
+		actualDisplay := actualRaw
+		if len(actualDisplay) > 100 {
+			actualDisplay = actualDisplay[:100] + "..."
+		}
+		expectedDisplay := string(expectedJSON)
+		if len(expectedDisplay) > 100 {
+			expectedDisplay = expectedDisplay[:100] + "..."
+		}
+		return false, fmt.Sprintf("JSON路径 %s: 实际值 %s 不等于期望值 %s", originalPath, actualDisplay, expectedDisplay)
 	}
 }
 
@@ -699,6 +835,10 @@ func (m *Manager) extractVariables(extractors map[string]string, responseBody []
 			path = "$" + path
 		}
 
+		// 替换 JSON 路径中的变量（支持 {{.var}} 格式）
+		path = m.replaceGoTemplateVars(path)
+		path = m.replaceVariables(path)
+
 		// 使用 gjson 提取变量
 		result := gjson.GetBytes(responseBody, path)
 
@@ -746,10 +886,15 @@ func (m *Manager) extractVariables(extractors map[string]string, responseBody []
 							m.Context.Variables[name] = result.Value()
 							fmt.Printf("  成功提取变量: %s = %v (使用数组第一个元素的路径: %s)\n", name, result.Value(), arrayFirstPath)
 						} else {
-							fmt.Printf("\u8b66\u544a: \u65e0\u6cd5\u4ece\u8def\u5f84 %s \u63d0\u53d6\u53d8\u91cf %s\n", path, name)
+							// 所有提取尝试都失败，设置变量为空字符串（用于清理步骤）
+							// 这样后续步骤可以使用空字符串作为占位符，不会因为变量未设置而失败
+							m.Context.Variables[name] = ""
+							fmt.Printf("  警告: 无法从路径 %s 提取变量 %s，设置为空字符串（用于清理步骤）\n", path, name)
 						}
 					} else {
-						fmt.Printf("\u8b66\u544a: \u65e0\u6cd5\u4ece\u8def\u5f84 %s \u63d0\u53d6\u53d8\u91cf %s\n", path, name)
+						// 所有提取尝试都失败，设置变量为空字符串（用于清理步骤）
+						m.Context.Variables[name] = ""
+						fmt.Printf("  警告: 无法从路径 %s 提取变量 %s，设置为空字符串（用于清理步骤）\n", path, name)
 					}
 				}
 			}

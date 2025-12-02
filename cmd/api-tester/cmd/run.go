@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/gaoyong06/api-tester/internal/config"
 	"github.com/gaoyong06/api-tester/internal/config/yaml"
@@ -15,13 +16,13 @@ import (
 
 var (
 	// run 命令的标志
-	specFile     string
-	baseURL      string
-	headers      string
-	timeout      int
-	pathParams   string
+	specFile      string
+	baseURL       string
+	headers       string
+	timeout       int
+	pathParams    string
 	requestBodies string
-	scenarioFile string
+	scenarioFile  string
 )
 
 // runCmd 表示 run 子命令
@@ -46,20 +47,37 @@ var runCmd = &cobra.Command{
 				log.Fatalf("无法加载配置文件: %v", err)
 			}
 
+			// 解析 spec 文件路径（相对于配置文件目录）
+			cfgFileAbs, _ := filepath.Abs(cfgFile)
+			cfgFileDir := filepath.Dir(cfgFileAbs)
+			resolvedSpecFile := yamlConfig.Spec
+			if !filepath.IsAbs(resolvedSpecFile) {
+				// 如果是相对路径，则相对于配置文件目录解析
+				resolvedSpecFile = filepath.Clean(filepath.Join(cfgFileDir, resolvedSpecFile))
+			}
+			resolvedSpecFiles := make([]string, len(yamlConfig.SpecFiles))
+			for i, specFile := range yamlConfig.SpecFiles {
+				if !filepath.IsAbs(specFile) {
+					resolvedSpecFiles[i] = filepath.Clean(filepath.Join(cfgFileDir, specFile))
+				} else {
+					resolvedSpecFiles[i] = specFile
+				}
+			}
+
 			// 转换为内部配置格式
 			cfg = &config.Config{
-				SpecFile:      yamlConfig.Spec,
-				SpecFiles:     yamlConfig.SpecFiles, // 添加对多个规范文件的支持
-				BaseURL:       yamlConfig.BaseURL,
-				Headers:       yamlConfig.Request.Headers,
-				OutputDir:     yamlConfig.OutputDir,
-				Verbose:       verbose,
-				Timeout:       yamlConfig.Timeout,
-				PathParams:    yamlConfig.Request.PathParams,
+				SpecFile:   resolvedSpecFile,
+				SpecFiles:  resolvedSpecFiles, // 添加对多个规范文件的支持
+				BaseURL:    yamlConfig.BaseURL,
+				Headers:    yamlConfig.Request.Headers,
+				OutputDir:  yamlConfig.OutputDir,
+				Verbose:    verbose,
+				Timeout:    yamlConfig.Timeout,
+				PathParams: yamlConfig.Request.PathParams,
 				// 将 map[string]string 转换为 map[string]interface{}
 				RequestBodies: convertStringMapToInterfaceMap(yamlConfig.Request.RequestBodies),
 				// 保存YAML配置对象，用于场景测试
-				YamlConfig:    yamlConfig,
+				YamlConfig: yamlConfig,
 			}
 
 			// 如果命令行参数提供了值，覆盖配置文件中的值
@@ -127,7 +145,7 @@ var runCmd = &cobra.Command{
 		}
 
 		// 输出测试结果摘要
-		fmt.Printf("\n测试完成! 总计: %d, 通过: %d, 失败: %d\n", 
+		fmt.Printf("\n测试完成! 总计: %d, 通过: %d, 失败: %d\n",
 			results.Total, results.Passed, results.Failed)
 		fmt.Printf("详细报告已保存到: %s\n", results.ReportPath)
 
@@ -135,7 +153,7 @@ var runCmd = &cobra.Command{
 		if reportType == "json" || reportType == "xml" || reportType == "junit" {
 			// 解析API定义
 			var apiDef *parser.APIDefinition
-			
+
 			// 如果指定了单个规范文件，使用它
 			if cfg.SpecFile != "" {
 				apiDef, err = parser.ParseSwaggerFile(cfg.SpecFile)
@@ -146,8 +164,8 @@ var runCmd = &cobra.Command{
 				// 如果指定了多个规范文件，合并所有文件的信息
 				// 创建一个空的 API 定义来存储合并的结果
 				apiDef = &parser.APIDefinition{
-					Title: "合并的 API 定义",
-					Version: "v1",
+					Title:     "合并的 API 定义",
+					Version:   "v1",
 					Endpoints: []*parser.Endpoint{},
 				}
 
@@ -189,7 +207,7 @@ var runCmd = &cobra.Command{
 
 			// 创建一个字符串切片来存储所有生成的报告路径
 			reportPaths := []string{}
-			
+
 			// 始终生成 JSON 报告，方便机器处理
 			fmt.Println("正在生成 JSON 报告...")
 			jsonReportPath, err := machine.GenerateReport(apiDef, endpointResults, outputDir, "json")
@@ -206,7 +224,7 @@ var runCmd = &cobra.Command{
 
 			// 根据报告类型生成其他格式的报告
 			var reportPath string
-			
+
 			switch reportType {
 			case "json":
 				// 已经生成了 JSON 报告，不需要重复生成

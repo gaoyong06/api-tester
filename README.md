@@ -44,7 +44,7 @@ spec: ./openapi.yaml          # OpenAPI 规范文件路径
 base_url: http://localhost:8080  # API 基础 URL
 timeout: 30                   # 请求超时时间（秒）
 verbose: true                 # 是否显示详细日志
-output_dir: ./test-reports    # 测试报告输出目录
+output_dir: ./test/reports    # 测试报告输出目录
 
 # 全局变量（可选）
 variables:
@@ -335,7 +335,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: test-reports
-          path: ./test-reports
+          path: ./test/reports
 ```
 
 ## 常见问题

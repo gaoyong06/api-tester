@@ -289,9 +289,9 @@ const reportTemplate = `<!DOCTYPE html>
             {{end}}
             
             {{if not $result.Validation.Passed}}
-            <div>
-                <h4>失败原因</h4>
-                <p style="color: #721c24;">{{$result.Validation.FailureReason}}</p>
+            <div style="background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin: 15px 0; border-radius: 4px;">
+                <h4 style="color: #856404; margin-top: 0;">❌ 失败原因</h4>
+                <p style="color: #721c24; font-family: 'Courier New', monospace; white-space: pre-wrap; word-break: break-word; margin-bottom: 0;">{{$result.Validation.FailureReason}}</p>
             </div>
             {{end}}
             
