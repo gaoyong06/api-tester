@@ -143,7 +143,7 @@ scenarios:
   # ========== Subscription Service 测试 ==========
   - name: Subscription Service - 订阅管理测试
     description: 测试套餐查询、订阅购买和订阅查询功能
-    base_url: http://localhost:9002
+    base_url: http://localhost:9114
     steps:
       - name: 获取套餐列表
         endpoint: /v1/subscription/plans
@@ -235,7 +235,7 @@ scenarios:
       - name: 查看订阅套餐
         endpoint: /v1/subscription/plans
         method: GET
-        base_url: http://localhost:9002
+        base_url: http://localhost:9114
         dependencies: [注册新用户]
         assert:
           status: 200
@@ -247,7 +247,7 @@ scenarios:
       - name: 购买订阅
         endpoint: /v1/subscription/order
         method: POST
-        base_url: http://localhost:9002
+        base_url: http://localhost:9114
         dependencies: [查看订阅套餐]
         request_body:
           uid: "{{.int_user_id}}"
@@ -263,7 +263,7 @@ scenarios:
       - name: 完成支付
         endpoint: /v1/subscription/payment/success
         method: POST
-        base_url: http://localhost:9002
+        base_url: http://localhost:9114
         dependencies: [购买订阅]
         request_body:
           order_id: "{{.final_order_id}}"
@@ -276,7 +276,7 @@ scenarios:
       - name: 验证会员状态
         endpoint: /v1/subscription/my/{{.int_user_id}}
         method: GET
-        base_url: http://localhost:9002
+        base_url: http://localhost:9114
         dependencies: [完成支付]
         path_params:
           uid: "{{.int_user_id}}"
