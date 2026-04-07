@@ -152,11 +152,11 @@ scenarios:
           status: 200
           body:
             $.plans: "!null"
-            $.plans[0].id: "!null"
+            $.plans[0].planId: "!null"
             $.plans[0].name: "!null"
             $.plans[0].price: "!null"
         extract:
-          first_plan_id: $.plans[0].id
+          first_plan_id: $.plans[0].planId
           first_plan_price: $.plans[0].price
 
       - name: 查询用户订阅状态（未订阅）
@@ -240,7 +240,7 @@ scenarios:
         assert:
           status: 200
         extract:
-          selected_plan: $.plans[0].id
+          selected_plan: $.plans[0].planId
           selected_price: $.plans[0].price
 
       # 3. 创建订阅
